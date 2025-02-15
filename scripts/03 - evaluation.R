@@ -29,68 +29,54 @@ library(JMbayes2)                      # For joint modeling and tvAUC computatio
 ## Train-Test creation ####
 # -------------------------------------------------------------------------- #
 # Create cross-validation folds from the longitudinal data, grouping by subject ID.
-CVdats <- create_folds(long_df, V = 5, id_var = "id", seed = 229)
-data_train <- CVdats$training[[1]]
-data_test <- CVdats$testing[[1]]
+
+eval_df_1 <- create_train_test(long_df, follow_up = tests_time)
+eval_df_2 <- create_train_test(long_df_2, follow_up = tests_time)
+eval_df_3 <- create_train_test(long_df_3, follow_up = tests_time)
+eval_df_4 <- create_train_test(long_df_4, follow_up = tests_time)
+
 # --- Fit Models on the Training Data (First Fold) ---
-
-# Fit the linear mixed model on the training fold.
-lme_6min_train <- lme(
-  x6mw_dist_meter ~ ns(time, df = 3) * (age + gender) + nyha, 
-  data = data_train, 
-  random = ~ ns(time, df = 3) | id, 
-  control = lmeControl(opt = 'optim')
-)
-
-# Fit the Cox proportional hazards model on the training fold.
-CoxFit_train <- coxph(
-  Surv(fup_time, mortality_status) ~ gender + age + nyha, 
-  data = data_train, 
-  model = TRUE, x = TRUE, y = TRUE
-)
-
-# Combine the models into a joint model.
-jointFit_train <- jm(
-  CoxFit_train, lme_6min_train, time_var = "time",
-  functional_forms = list("x6mw_dist_meter" = ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter))
-)
-
-# create coxph model with 6min walk distance for comparison
-CoxFit_six_train <- coxph(
-  Surv(fup_time, mortality_status) ~ gender + age + nyha + x6mw_dist_meter, 
-  data = data_train %>%
-    arrange(id, time) %>%                 # Sort by patient ID and time
-    group_by(id) %>%
-    filter(row_number() == 1) %>%         # Keep only the first visit (baseline)
-    ungroup(), 
-  model = TRUE, x = TRUE, y = TRUE
-)
+models_1 <- fit_models(eval_df_1)
+models_2 <- fit_models(eval_df_2)
+models_3 <- fit_models(eval_df_3)
+models_4 <- fit_models(eval_df_4)
 
 # -------------------------------------------------------------------------- #
 ## Bootstrap Evaluation ####
 # -------------------------------------------------------------------------- #
-# This section performs bootstrap evaluation to assess the stability of AUC measures.
-unique_ids <- unique(data_test$id)
 B <- 100  # Number of bootstrap iterations (increase as needed)
 
 # Set up parallel processing using multisession.
 plan(multisession, workers = parallel::detectCores() - 1)
 
 # Run bootstrap iterations in parallel.
-bootROC_results <- future_map(1:B, ~ bootstrap_iteration(.x), 
-                              .options = furrr_options(seed = TRUE))
+bootROC_results_1 <- future_map(1:B, ~ bootstrap_iteration(.x, eval_df_1$test, models_1),
+                                .options = furrr_options(seed = TRUE))
+bootROC_results_2 <- future_map(1:B, ~ bootstrap_iteration(.x, eval_df_2$test, models_2),
+                                .options = furrr_options(seed = TRUE))
+bootROC_results_3 <- future_map(1:B, ~ bootstrap_iteration(.x, eval_df_3$test, models_3),
+                                .options = furrr_options(seed = TRUE))
+bootROC_results_4 <- future_map(1:B, ~ bootstrap_iteration(.x, eval_df_4$test, models_4),
+                                .options = furrr_options(seed = TRUE))
 
 # Combine all bootstrap results into a single data frame.
-bootROC_results_df <- bind_rows(bootROC_results)
-print(bootROC_results_df)
+bootROC_results_df_1 <- bind_rows(bootROC_results_1)
+bootROC_results_df_2 <- bind_rows(bootROC_results_2)
+bootROC_results_df_3 <- bind_rows(bootROC_results_3)
+bootROC_results_df_4 <- bind_rows(bootROC_results_4)
 
 # Switch back to sequential processing.
 plan(sequential)
 
 # Summarize the bootstrap results: compute mean, standard deviation, median, and 95% CI.
-bootROC_summary <- bootROC_results_df %>%
-  pivot_longer(cols = everything(), names_to = "AUC", values_to = "value") %>%
-  group_by(AUC) %>%
+bootROC_summary <- bind_rows(
+  bootROC_results_df_1 %>% mutate(model = "Model 1"),
+  bootROC_results_df_2 %>% mutate(model = "Model 2"),
+  bootROC_results_df_3 %>% mutate(model = "Model 3"),
+  bootROC_results_df_4 %>% mutate(model = "Model 4")
+) %>%
+  pivot_longer(cols = -model, names_to = "AUC", values_to = "value") %>%
+  group_by(model, AUC) %>%
   summarise(
     mean     = mean(value),
     sd       = sd(value),
@@ -98,17 +84,31 @@ bootROC_summary <- bootROC_results_df %>%
     lower_ci = quantile(value, 0.025),
     upper_ci = quantile(value, 0.975)
   )
-print(bootROC_summary)
 
-bootROC_summary %>%
-  ggplot(aes(x = AUC, y = mean, ymin = lower_ci, ymax = upper_ci)) +
-  geom_pointrange() +
-  geom_hline(yintercept = 0.5, linetype = "dashed") +
-  labs(title = "Bootstrap AUC estimates",
-       x = "AUC",
-       y = "Value") +
-  theme_minimal()
-
+bootROC_summary %>% 
+  ggplot(aes(x = AUC, y = mean, color = AUC)) +
+  geom_errorbar(aes(ymin = lower_ci, ymax = upper_ci), width = 0.2, linewidth = 1) +
+  geom_point(size = 3) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "gray40") +
+ # scale_color_brewer(palette = "Set1") +
+  labs(
+    title    = "Bootstrap AUC Estimates",
+    subtitle = "Mean with 95% Confidence Intervals",
+    x        = "AUC Metric",
+    y        = "Value",
+    color    = "AUC"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position  = "bottom",
+    # panel.grid.major = element_line(color = "gray85"),
+    # panel.grid.minor = element_blank(),
+    # strip.background = element_rect(fill = "gray90", color = "gray70"),
+    # plot.title       = element_text(face = "bold"),
+    # plot.subtitle    = element_text(face = "italic"),
+    axis.text.x = element_blank()
+  ) +
+  facet_wrap(~ model)#, scales = "free_y")
 
 # ============================================================================ #
 # Full Model Evaluation --------------------------------------------------------
@@ -128,57 +128,40 @@ long_df %>%
        y = "Frequency") +
   theme_minimal()
 
-# Set the follow-up time (in months) for later filtering
-follow_up_time <- 12
-
-# Create datasets with only the last measurement up to the defined follow-up time.
-long_df_last <- long_df %>% 
-  filter(time <= follow_up_time) %>%
-  group_by(id) %>%
-  mutate(x6mw_dist_meter = last(x6mw_dist_meter)) %>%
-  ungroup()
-
-long_df_2_last <- long_df_2 %>% 
-  filter(time <= follow_up_time) %>%
-  group_by(id) %>%
-  mutate(x6mw_dist_meter = last(x6mw_dist_meter)) %>%
-  ungroup()
-
 # -------------------------------------------------------------------------- #
 ## Discrimination Analysis (ROC) ####
 # -------------------------------------------------------------------------- #
+fup_times <- c(24, 48)
 # Generate time-dependent ROC data for different joint models and data subsets.
-
 # ROC data using the primary joint model (jointFit) and the full longitudinal data.
 roc_data <- create_roc_data(
-  joint_model = jointFit,
-  long_data = long_df,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
-)
-
-# ROC data using the primary joint model with only the last measurements.
-roc_data_last <- create_roc_data(
-  joint_model = jointFit,
-  long_data = long_df_last,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
+  model = models_1$joint_model,
+  long_data = eval_df_1$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
 )
 
 # ROC data using the alternative joint model (jointFit_2) and patients with >1 visit.
-roc_data_2 <- create_roc_data(
-  joint_model = jointFit_2,
-  long_data = long_df_2,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
+roc_data_3 <- create_roc_data(
+  model = models_3$joint_model,
+  long_data = eval_df_3$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
 )
 
-# ROC data for the alternative joint model using only the last measurements.
-roc_data_2_last <- create_roc_data(
-  joint_model = jointFit_2,
-  long_data = long_df_2_last,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
+roc_data_cox <- create_roc_data(
+  model = models_1$cox_model,
+  long_data = eval_df_1$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
+)
+
+# ROC data using the alternative joint model (jointFit_2) and patients with >1 visit.
+roc_data_cox_3 <- create_roc_data(
+  model = models_3$cox_model,
+  long_data = eval_df_3$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
 )
 
 # -------------------------------------------------------------------------- #
@@ -186,55 +169,53 @@ roc_data_2_last <- create_roc_data(
 # -------------------------------------------------------------------------- #
 # Compute calibration metrics for different joint model specifications and data subsets.
 cal_data <- calc_cal_metrics(
-  joint_model = jointFit,
-  newdata = long_df,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
+  model = models_1$joint_model,
+  newdata = eval_df_1$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
 )
 
-cal_data_last <- calc_cal_metrics(
-  joint_model = jointFit,
-  newdata = long_df_last,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
+cal_data_3 <- calc_cal_metrics(
+  model = models_3$joint_model,
+  newdata = eval_df_3$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
 )
 
-cal_data_2 <- calc_cal_metrics(
-  joint_model = jointFit_2,
-  newdata = long_df_2,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
+cal_data_cox <- calc_cal_metrics(
+  model = models_1$cox_model,
+  newdata = eval_df_1$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
 )
 
-cal_data_2_last <- calc_cal_metrics(
-  joint_model = jointFit_2,
-  newdata = long_df_2_last,
-  Tstart = follow_up_time,
-  follow_up_times = c(12, 36, 60)
+cal_data_cox_3 <- calc_cal_metrics(
+  model = models_3$cox_model,
+  newdata = eval_df_3$test,
+  Tstart = tests_time,
+  follow_up_times = fup_times
 )
 
 # -------------------------------------------------------------------------- #
 ## Plotting ROC and Calibration Curves ####
 # -------------------------------------------------------------------------- #
 # Arrange and display the ROC and calibration plots.
-# First set of plots using the primary joint model (jointFit)
-plot1 <- ggarrange(
+roc_cal_plot <- ggarrange(
   plot_tvROC(roc_data),
-  plot_tvROC(roc_data_last),
+  plot_tvROC(roc_data_cox),
   plot_cal(cal_data),
-  plot_cal(cal_data_last),
+  plot_cal(cal_data_cox),
   nrow = 2, ncol = 2
 )
 
-# Second set of plots using the alternative joint model (jointFit_2)
-plot2 <- ggarrange(
-  plot_tvROC(roc_data_2),
-  plot_tvROC(roc_data_2_last),
-  plot_cal(cal_data_2),
-  plot_cal(cal_data_2_last),
+roc_cal_3_plot <- ggarrange(
+  plot_tvROC(roc_data_3),
+  plot_tvROC(roc_data_cox_3),
+  plot_cal(cal_data_3),
+  plot_cal(cal_data_cox_3),
   nrow = 2, ncol = 2
 )
 
-# Display the plots
-print(plot1)
-print(plot2)
+# Display the plot
+print(roc_cal_plot)
+print(roc_cal_3_plot)

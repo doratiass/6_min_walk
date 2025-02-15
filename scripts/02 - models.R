@@ -83,9 +83,19 @@ long_df_2 <- long_df %>%
   filter(n() >= 2) %>%   # Retain only patients with at least 2 visits
   ungroup()
 
-# Update the Cox dataset to include only patients with more than 1 visit.
-cox_df_2 <- cox_df %>%
-  filter(id %in% long_df_2$id)
+long_df_3 <- long_df %>%
+  group_by(id) %>%
+  filter(n() >= 3) %>%   # Retain only patients with at least 3 visits
+  ungroup()
+
+long_df_4 <- long_df %>%
+  group_by(id) %>%
+  filter(n() >= 4) %>%   # Retain only patients with at least 4 visits
+  ungroup()
+
+# Update the Cox dataset to include only patients with more than 2 visit.
+cox_df_3 <- cox_df %>%
+  filter(id %in% long_df_3$id)
 
 # (Optional) Count the number of visits per patient.
 long_df %>%
@@ -152,13 +162,13 @@ summary(lme_6min)
 r.squaredGLMM(lme_6min)
 
 # Fit the same model on the subset of patients with more than one visit.
-lme_6min_2 <- lme(x6mw_dist_meter ~ ns(time, df = 3) * (age + gender) + nyha, 
-                  data = long_df_2, 
+lme_6min_3 <- lme(x6mw_dist_meter ~ ns(time, df = 3) * (age + gender) + nyha, 
+                  data = long_df_3, 
                   random = ~ ns(time, df = 3) | id, 
                   control = lmeControl(opt = 'optim'))
 
-summary(lme_6min_2)
-r.squaredGLMM(lme_6min_2)
+summary(lme_6min_3)
+r.squaredGLMM(lme_6min_3)
 
 # (Optional) Models using only the last measurement have been commented out.
 # Uncomment if needed for further analyses.
@@ -178,8 +188,8 @@ bind_rows(
     mutate(pred = predict(lme_6min, newdata = pred_6mwt_data, level = 0),
            model = "model_1"),
   pred_6mwt_data %>% 
-    mutate(pred = predict(lme_6min_2, newdata = pred_6mwt_data, level = 0),
-           model = "model_2")
+    mutate(pred = predict(lme_6min_3, newdata = pred_6mwt_data, level = 0),
+           model = "model_3")
 ) %>%
   ggplot(aes(x = time, y = pred, colour = age)) +
   geom_point() +
@@ -197,15 +207,19 @@ CoxFit <- coxph(Surv(fup_time, mortality_status) ~ gender + age + nyha,
                 data = cox_df, 
                 model = TRUE, x = TRUE, y = TRUE)
 
+CoxFit_3 <- coxph(Surv(fup_time, mortality_status) ~ gender + age + nyha, 
+                data = cox_df_3, 
+                model = TRUE, x = TRUE, y = TRUE)
+
 # Fit a Cox model that additionally includes the 6MWT distance.
 CoxFit_six <- coxph(Surv(fup_time, mortality_status) ~ gender + age + nyha + x6mw_dist_meter, 
                     data = cox_df, 
                     model = TRUE, x = TRUE, y = TRUE)
 
-# Fit a Cox model on the subset of patients with >1 visit.
-CoxFit_2 <- coxph(Surv(fup_time, mortality_status) ~ gender + age + nyha, 
-                  data = cox_df_2, 
-                  model = TRUE, x = TRUE, y = TRUE)
+# Fit a Cox model that additionally includes the 6MWT distance.
+CoxFit_six_3 <- coxph(Surv(fup_time, mortality_status) ~ gender + age + nyha + x6mw_dist_meter, 
+                    data = cox_df_3, 
+                    model = TRUE, x = TRUE, y = TRUE)
 
 # -------------------------------------------------------------------------- #
 ## Joint Models  ####
@@ -217,22 +231,19 @@ exp(coef(jointFit_0)$association)
 
 # Joint model 1: Use functional forms including both the current value and slope of x6mw_dist_meter.
 jointFit_1 <- jm(CoxFit, lme_6min, time_var = "time",
-                 functional_forms = list("x6mw_dist_meter" = 
-                                           ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter)))
+                 functional_forms = ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter))
 summary(jointFit_1)
 exp(coef(jointFit_1)$association)
 
 # Joint model 2: Test an interaction between the current value and slope.
 jointFit_1_2 <- jm(CoxFit, lme_6min, time_var = "time",
-                 functional_forms = list("x6mw_dist_meter" = 
-                                           ~ value(x6mw_dist_meter) * slope(x6mw_dist_meter)))
+                 functional_forms = ~ value(x6mw_dist_meter) * slope(x6mw_dist_meter))
 summary(jointFit_1_2)
 exp(coef(jointFit_1_2)$association)
 
 # Joint model 3: Incorporate the 6MWT measure from the Cox model that includes x6mw_dist_meter.
 jointFit_3 <- jm(CoxFit_six, lme_6min, time_var = "time",
-                 functional_forms = list("x6mw_dist_meter" = 
-                                           ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter)))
+                 functional_forms = ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter))
 summary(jointFit_3)
 exp(coef(jointFit_3)$association)
 
@@ -251,17 +262,15 @@ compare_jm(jointFit_0, jointFit_1, jointFit_1_2, jointFit_3, jointFit_4)
 # -------------------------------------------------------------------------- #
 # Final joint model (using CoxFit) with value + slope specification.
 jointFit <- jm(CoxFit, lme_6min, time_var = "time",
-               functional_forms = list("x6mw_dist_meter" = 
-                                         ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter)))
+               functional_forms = ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter))
 summary(jointFit)
 exp(coef(jointFit)$association)
 
 # Joint model on the subset of patients with >1 visit.
-jointFit_2 <- jm(CoxFit_2, lme_6min_2, time_var = "time",
-                 functional_forms = list("x6mw_dist_meter" = 
-                                           ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter)))
-summary(jointFit_2)
-exp(coef(jointFit_2)$association)
+jointFit_3 <- jm(CoxFit_3, lme_6min_3, time_var = "time",
+                 functional_forms = ~ value(x6mw_dist_meter) + slope(x6mw_dist_meter))
+summary(jointFit_3)
+exp(coef(jointFit_3)$association)
 
 # (Optional) Save the final joint model for later use.
 save(jointFit, file = "data/jointFit.RData")
@@ -289,8 +298,9 @@ ggarrange(
 # ============================================================================ #
 # Save the Final Cleaned Data -------------------------------------------------
 # ============================================================================ #
-save(cox_df, long_df, CoxFit, lme_6min, jointFit, 
-     cox_df_2, long_df_2, CoxFit_2, lme_6min_2, jointFit_2,
+save(cox_df, long_df, CoxFit, lme_6min, jointFit, CoxFit_six,
+     cox_df_3, long_df_3, CoxFit_3, lme_6min_3, jointFit_3, CoxFit_six_3,
+     long_df_2, long_df_4,
      file = "data/CHF_models.RData")
 
 save(lme_6min_0,lme_6min_n,lme_6min_int_sparse,lme_6min_int,CoxFit_six,

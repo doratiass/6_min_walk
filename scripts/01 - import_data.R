@@ -26,9 +26,8 @@ library(zoo)          # Working with time series (e.g., na.approx)
 library(survival)     # Survival analysis
 
 # ============================================================================ #
-# Definitions and Parameters --------------------------------------------------
+# Definitions -----------------------------------------------------------------
 # ============================================================================ #
-
 # -------------------------------------------------------------------------- #
 ## Define Exclusion IDs and Scaling Parameters ####
 # -------------------------------------------------------------------------- #
@@ -38,12 +37,6 @@ ex_id <- readxl::read_xlsx("data/CHF_mortality.xlsx") %>%
   janitor::clean_names() %>%
   filter(!is.na(exclude) | mortality_status == 9999) %>%
   pull(id_enc)
-
-# Define scaling factors and follow-up time limits
-age_scale     <- 1    # Scaling for age (set to 1 for no scaling)
-six_min_scale <- 1    # Scaling for 6-minute walk distance (set to 1 for no scaling)
-min_fup_time  <- 6    # Minimum follow-up time in months
-max_fup_time  <- 120  # Maximum follow-up time in months
 
 # -------------------------------------------------------------------------- #
 ## Define Keywords and Variable Sets ####
