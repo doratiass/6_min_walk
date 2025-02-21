@@ -297,7 +297,7 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
 # ============================================================================ #
 # Create the Final Cleaned Dataset --------------------------------------------
 # ============================================================================ #
-clean_df <- raw_df %>%
+clean_df_identified <- raw_df %>%
   # Merge the clinical data with mortality data by subject ID
   left_join(mortality, by = "id") %>%
   arrange(id, x6mw_date) %>%
@@ -335,7 +335,7 @@ clean_df <- raw_df %>%
 # -------------------------------------------------------------------------- #
 ## Generate Baseline Summary Table (Table 1) ####
 # -------------------------------------------------------------------------- #
-tbl_1 <- clean_df %>%
+tbl_1 <- clean_df_identified %>%
   group_by(id) %>%
   # Compute the number of 6MWT tests per subject and the overall change from first to last measurement
   mutate(
@@ -349,14 +349,15 @@ tbl_1 <- clean_df %>%
   mutate(x6mw_dist_meter_q = cut(x6mw_dist_meter,
                                  c(0, quantile(x6mw_dist_meter, c(0.333, 0.667)), max(x6mw_dist_meter)),
                                  labels = c("Low percentile", "Middle percentile", "High percentile"))) %>%
+  # Remove identifiers and time variable from the summary table
+  select(-c(id, time, x6mw_change)) %>%
   # Rename variables using the custom label_get function for presentation
   rename_all(function(x) sapply(x, label_get, USE.NAMES = FALSE)) %>%
-  # Remove identifiers and time variable from the summary table
-  select(-c(id, time)) %>%
   # Create a summary table stratified by 6MWT distance quantiles using gtsummary
   tbl_summary(by = x6mw_dist_meter_q, 
               type = list(label_get("n_6mw") ~ "continuous"),
               statistic = list(all_continuous() ~ "{mean} ({sd})"),
+              value = list(label_get("gender") ~ "Male"),
               missing = "no") %>%
   add_n(statistic = "{N_miss} ({p_miss})") %>%
   modify_header(n = "**Missing**") %>%
@@ -364,6 +365,23 @@ tbl_1 <- clean_df %>%
 
 # Save the summary table as an HTML file
 gt::gtsave(as_gt(tbl_1), file = "export/tbl_1.html")
+
+# -------------------------------------------------------------------------- #
+## Anonymize the Data and Create a De-Identified Dataset ####
+# -------------------------------------------------------------------------- #
+# Create a mapping table
+unique_ids <- unique(clean_df_identified$id)
+anon_ids <- seq_along(unique_ids)
+id_map <- data.frame(Original_ID = unique_ids, Anonymized_ID = anon_ids)
+
+# Replace original IDs with anonymized IDs
+clean_df <- id_map %>%
+  right_join(clean_df_identified, by = c("Original_ID" = "id")) %>%
+  select(-Original_ID) %>%
+  rename(id = Anonymized_ID)
+
+# Save the mapping table
+write_csv(id_map, "data/id_mapping.csv")
 
 # -------------------------------------------------------------------------- #
 ## Save the Final Cleaned Data and Clean Up Workspace ####

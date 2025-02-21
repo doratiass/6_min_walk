@@ -85,7 +85,7 @@ vars_dict <- tibble(
   "na" = "Sodium",
   "hgb" = "Hemoglobin",
   "ua" = "Uric acid",
-  "x6mw_dist_meter" = "6MWT distance (50m)",
+  "x6mw_dist_meter" = "6MWT distance (m)",
   "x6mw_dist_meter_diff" = "6MWT distance change (m)",
   "x6mw_dist_meter_diff_percent" = "6MWT distance change (%)",
   "x6mw_dist_meter_derivative" = "6MWT distance derivative",
@@ -218,443 +218,355 @@ fit_models <- function(data_list) {
   ))
 }
 # -------------------------------------------------------------------------- #
-## Discrimination Evaluation --------------------------------------------------
+## Bootstrap Evaluation -------------------------------------------------------
 # -------------------------------------------------------------------------- #
 
-# Function to create ROC data for different follow-up times using a joint model.
-# Inputs:
-#   - model: The fitted model. can be either joint model or cox model
-#   - long_data: Longitudinal data for prediction.
-#   - Tstart: The starting time for prediction.
-#   - follow_up_times: Vector of follow-up times (Dt) at which to calculate ROC.
-# Returns a tibble containing false positive rates, true positive rates, follow-up time, and AUC.
-create_roc_data_2 <- function(model, long_data, Tstart, follow_up_times) {
-  roc_list <- list()  # Initialize list to store ROC results
-  
-  # Loop through each specified follow-up time (Dt)
-  for (Dt in follow_up_times) {
-    # Compute time-dependent ROC using tvROC function
-    if (inherits(model, "jm")) {
-      roc_result <- tvROC(model, newdata = long_data, Tstart = Tstart, Dt = Dt, 
-                          type_weights = "IPCW")
-    } else {
-      roc_result <- tvAUC_coxph(model, newdata = long_data, Tstart = Tstart, Dt = Dt)
-    }
-    
-    # Calculate and round the Area Under the Curve (AUC)
-    auc <- round(tvAUC(roc_result)$auc, 3)
-    # Store both ROC result and AUC in the list (using Dt as the key)
-    roc_list[[as.character(Dt)]] <- list(roc = roc_result, auc = auc)
-  }
-  
-  # Combine all ROC data into a single tibble for plotting
-  roc_data <- do.call(bind_rows, lapply(names(roc_list), function(Dt) {
-    roc <- roc_list[[Dt]]$roc
-    auc <- roc_list[[Dt]]$auc
-    data.frame(
-      FP = roc$FP,             # False positive rate (1 - specificity)
-      TP = roc$TP,             # True positive rate (sensitivity)
-      FollowUp = as.numeric(Dt),
-      AUC = auc                # Area Under the Curve for this follow-up time
-    )
-  }))
-  
-  return(roc_data)
-}
-
 # -----------------------------------------------------------------------------#
-# Time-Dependent AUC Computation for Dynamic Survival Predictions via Cox Model
+# Time-Dependent Metric Computation for Dynamic Survival Predictions via Cox Model
 #
 # Overview:
-#   This function computes the time-dependent Area Under the Curve (AUC) for dynamic
-#   survival predictions based on a Cox proportional hazards model. It evaluates the 
-#   discriminative performance of the model at a specified prediction horizon by 
-#   comparing the model-generated risk scores with the observed survival outcomes.
+#   This function computes time-dependent performance metrics for a Cox proportional 
+#   hazards model, specifically the time-dependent Area Under the Curve (AUC), 
+#   Receiver Operating Characteristic (ROC) metrics, and Brier score. 
+#   It evaluates the discriminative and predictive performance of the model 
+#   at a specified prediction horizon by comparing the model-generated risk scores 
+#   with the observed survival outcomes.
 #
 # Parameters:
 #   object:
-#     A fitted Cox proportional hazards model (an object of class "coxph"). This model 
-#     should be obtained using the 'coxph' function.
+#     A fitted Cox proportional hazards model (an object of class "coxph"), 
+#     obtained using the 'coxph' function.
 #
 #   newdata:
-#     A data frame containing the prediction data. It must include the following columns:
+#     A data frame containing the prediction dataset. It must include the following columns:
 #       - id: Unique identifier for each subject.
-#       - time: The time at which the covariates were recorded (typically at baseline).
-#       - fup_time: The follow-up time corresponding to the occurrence of the event or censoring.
-#       - mortality_status: The event indicator (1 if the event occurred, 0 if censored).
+#       - time: The time at which covariates were recorded.
+#       - fup_time: The follow-up time at which the event or censoring occurred.
+#       - mortality_status: Event indicator (1 if event occurred, 0 if censored).
 #
 #   Tstart:
-#     The starting time for prediction. Only subjects who are at risk at Tstart are included 
-#     in the analysis. (Default is 0.)
+#     The starting time for prediction. Only subjects at risk at Tstart are included 
+#     in the analysis. Default is 0.
 #
 #   Thoriz:
-#     The prediction horizon time point. It must be greater than Tstart. If Thoriz is not provided,
-#     then the time interval Dt must be specified so that Thoriz can be computed as Tstart + Dt.
+#     The prediction horizon time point. It must be greater than Tstart. 
+#     If Thoriz is not provided, it is computed as Tstart + Dt.
 #
 #   Dt:
-#     The duration (time interval) for prediction. This parameter is used to compute Thoriz when 
-#     it is not explicitly provided.
+#     The time interval for prediction, used to compute Thoriz if not explicitly provided.
 #
 #   id_var, time_var, Time_var, event_var:
-#     Optional arguments to specify the column names in 'newdata' for the subject identifier,
-#     time of covariate measurement, follow-up time, and event indicator, respectively.
-#     Default values are "id", "time", "fup_time", and "mortality_status".
+#     Column names in 'newdata' corresponding to the subject ID, covariate measurement time, 
+#     follow-up time, and event indicator, respectively. Defaults: "id", "time", "fup_time", "mortality_status".
 #
 #   type:
-#     A character value specifying the type of output. If "auc", the function returns the computed 
-#     AUC along with key prediction time points and model metadata. If "roc", the output includes 
-#     additional ROC-related metrics such as true positive and false positive rates, threshold values, 
-#     F1 score, and Youden's index.
+#     A character value specifying the output type:
+#       - "auc": Computes time-dependent AUC.
+#       - "roc": Returns ROC-related metrics (e.g., TP, FP, thresholds, F1 score, Youden index).
+#       - "brier": Computes the Brier score for calibration assessment.
 #
 #   ...:
-#     Additional arguments that are passed to the underlying prediction functions.
+#     Additional arguments passed to the underlying prediction functions.
 #
 # Returns:
 #   A list containing the following elements:
-#     - auc: The computed time-dependent AUC (numeric).
-#     - Tstart: The adjusted starting time used for prediction (numeric).
-#     - Thoriz: The adjusted prediction horizon time (numeric).
-#     - nr: The number of unique subjects included in the computation (integer).
-#     - classObject: The class of the input Cox model.
-#     - nameObject: The name of the input Cox model object.
+#     - auc: Computed time-dependent AUC (if type = "auc" or "roc").
+#     - brier: Computed Brier score (if type = "brier").
+#     - Tstart: Adjusted starting time for prediction.
+#     - Thoriz: Adjusted prediction horizon time.
+#     - nr: Number of unique subjects included in computation.
+#     - classObject: Class of the input Cox model.
+#     - nameObject: Name of the input Cox model object.
 #
-#   For type "roc", additional elements include:
-#     - TP: The true positive rates.
-#     - FP: The false positive rates.
-#     - thrs: The threshold values used in the ROC analysis.
-#     - F1score: The median threshold corresponding to the maximum F1 score.
-#     - Youden: The median threshold corresponding to the maximum Youden's index.
+#   For type = "roc", additional elements include:
+#     - TP: True positive rates.
+#     - FP: False positive rates.
+#     - thrs: Threshold values used in ROC analysis.
+#     - F1score: Threshold maximizing the F1 score.
+#     - Youden: Threshold maximizing Youden's index.
 #
 # Notes:
-#   - A small perturbation (1e-06) is added to Tstart and Thoriz to mitigate potential numerical issues.
-#   - For dynamic prediction, only the most recent covariate measurements for subjects at risk at Tstart are used.
+#   - A small perturbation (1e-06) is added to Tstart and Thoriz to mitigate numerical issues.
+#   - Only the most recent covariate measurements for subjects at risk at Tstart are used.
+#   - The function internally filters the dataset to ensure only subjects at risk at Tstart are included.
 #
 # -----------------------------------------------------------------------------#
-tvAUC_coxph <- function(object, newdata, Tstart = 0, Thoriz = NULL, Dt = NULL, 
-                        id_var = "id", time_var = "time", Time_var = "fup_time",
-                        event_var = "mortality_status", type = c("auc", "roc"), ...) {
-  # Confirm that 'object' is of class "coxph".
+tvEVAL <- function(object, newdata, Tstart = 0, Thoriz = NULL, Dt = NULL, 
+                   id_var = "id", time_var = "time", Time_var = "fup_time",
+                   event_var = "mortality_status", type = c("auc", "roc", "brier"), ...) {
+  
+  # Ensure the provided model is a Cox proportional hazards model.
   if (!inherits(object, "coxph"))
-    stop("Use only with 'coxph' objects.\n")
+    stop("This function can only be used with 'coxph' objects.\n")
   
-  # Ensure that 'newdata' is a non-empty data frame containing the necessary prediction data.
+  # Validate that 'newdata' is a non-empty data frame.
   if (!is.data.frame(newdata) || nrow(newdata) == 0)
-    stop("'newdata' must be a data.frame with at least one row.\n")
+    stop("'newdata' must be a non-empty data frame.\n")
   
-  # Verify that at least one of 'Thoriz' (prediction horizon) or 'Dt' (time interval) is provided.
+  # Ensure at least one of 'Thoriz' (prediction horizon) or 'Dt' (time interval) is provided.
   if (is.null(Thoriz) && is.null(Dt))
-    stop("Either 'Thoriz' or 'Dt' must be non-null.\n")
+    stop("Either 'Thoriz' or 'Dt' must be specified.\n")
   
-  # If provided, 'Thoriz' must be greater than 'Tstart'; otherwise, the function stops.
+  # If 'Thoriz' is provided, ensure it is greater than 'Tstart'.
   if (!is.null(Thoriz) && Thoriz <= Tstart)
     stop("'Thoriz' must be larger than 'Tstart'.\n")
   
-  # Compute 'Thoriz' using 'Dt' if Thoriz is not provided.
+  # Compute 'Thoriz' if it is not explicitly provided.
   if (is.null(Thoriz))
     Thoriz <- Tstart + Dt
   
-  # Calculate 'Dt' as the difference between Thoriz and Tstart if Dt is not provided.
+  # Compute 'Dt' if it is not explicitly provided.
   if (is.null(Dt))
     Dt <- Thoriz - Tstart
   
-  # Confirm that 'newdata' contains the necessary columns as specified by the parameter names.
+  # Verify that 'newdata' contains the required columns.
   if (is.null(newdata[[id_var]]))
-    stop("cannot find the '", id_var, "' variable in newdata.")
+    stop("Column '", id_var, "' not found in newdata.")
   if (is.null(newdata[[time_var]]))
-    stop("cannot find the '", time_var, "' variable in newdata.")
+    stop("Column '", time_var, "' not found in newdata.")
   if (is.null(newdata[[Time_var]]))
-    stop("cannot find the '", Time_var, "' variable in newdata.")
+    stop("Column '", Time_var, "' not found in newdata.")
   if (is.null(newdata[[event_var]]))
-    stop("cannot find the '", event_var, "' variable in newdata.")
+    stop("Column '", event_var, "' not found in newdata.")
   
-  # Adjust Tstart and Thoriz slightly to avoid potential numerical precision issues.
+  # Apply a small numerical adjustment to Tstart and Thoriz to avoid precision issues.
   Tstart <- Tstart + 1e-06
   Thoriz <- Thoriz + 1e-06
   
-  # Filter the dataset to include only subjects who are at risk at Tstart.
-  # For subjects with multiple records, retain the most recent measurement prior to Tstart.
+  # Filter dataset to retain only subjects at risk at Tstart.
+  # If a subject has multiple records, only the most recent record before Tstart is kept.
   newdata <- create_cox_df(newdata, Tstart)
-
-  # Compute the linear predictor (risk score) for each subject using the fitted Cox model.
-  lp <- predict(object, newdata = newdata, type = "lp")
   
-  # Evaluate the time-dependent AUC using the survivalROC function based on the computed risk scores.
-  auc <- survivalROC(Stime = newdata[[Time_var]],
-                     status = newdata[[event_var]],
-                     marker = lp,
-                     predict.time = Thoriz,
-                     method = "KM")
-  
-  # Prepare the output list, which varies based on the selected 'type' parameter.
-  if (type == "auc") {
-    # For 'auc' type: return the computed AUC along with key time points, subject count, and model metadata.
-    out <- list(auc = auc$AUC, Tstart = Tstart, Thoriz = Thoriz,
-                nr = length(unique(newdata[[id_var]])),
-                classObject = class(object),
-                nameObject = deparse(substitute(object)))
-    class(out) <- "tvAUC_coxph"
-  } else {
-    # For 'roc' type: generate ROC metrics and derive additional performance measures.
-    metric_df <- tibble(
-      TP = auc$TP,
-      FP = auc$FP,
-      thres = auc$cut.values
-    ) %>%
-      mutate(
-        precision = TP / (TP + FP),
-        # Here, TP is assumed to represent sensitivity (i.e., recall)
-        recall = TP,
-        F1 = 2 * (precision * recall) / (precision + recall),
-        Youden = TP - FP  # As specificity = 1 - FP, Youden = TP + (1-FP) - 1
+  if (type %in% c("auc", "roc")) {
+    # Compute the linear predictor (risk score) from the fitted Cox model.
+    lp <- predict(object, newdata = newdata, type = "lp")
+    
+    # Compute the time-dependent AUC using survivalROC.
+    auc <- survivalROC(
+      Stime = newdata[[Time_var]],
+      status = newdata[[event_var]],
+      marker = lp,
+      predict.time = Thoriz,
+      span = 0.25 * nrow(newdata)^(-0.20)
+    )
+    
+    if (type == "auc") {
+      # Output AUC result with additional model metadata.
+      out <- list(
+        auc = auc$AUC,
+        Tstart = Tstart,
+        Thoriz = Thoriz,
+        nr = length(unique(newdata[[id_var]])),
+        classObject = class(object),
+        nameObject = deparse(substitute(object))
       )
-    # Determine the median threshold corresponding to the maximum F1 score.
-    F1score <- median(metric_df[metric_df$F1 == max(metric_df$F1, na.rm = TRUE),]$thres, na.rm = TRUE)
-    # Determine the median threshold corresponding to the maximum Youden's index.
-    Youden <- median(metric_df[metric_df$Youden == max(metric_df$Youden, na.rm = TRUE),]$thres, na.rm = TRUE)
-    out <- list(TP = metric_df$TP, FP = metric_df$FP, auc = auc$AUC, 
-                thrs = metric_df$thres, F1score = F1score, Youden = Youden,
-                Tstart = Tstart, Thoriz = Thoriz, nr = length(unique(newdata[[id_var]])),
-                classObject = class(object),
-                nameObject = deparse(substitute(object)))
-    class(out) <- "tvROC_coxph"
-  }
-  return(out)
-}
-
-tvAUC_coxph_old <- function(object, newdata, Tstart = 0, Thoriz = NULL, Dt = NULL, ...) {
-  # Check that a Cox model was supplied
-  if (!inherits(object, "coxph"))
-    stop("Use only with 'coxph' objects.\n")
-  
-  if (!is.data.frame(newdata) || nrow(newdata) == 0)
-    stop("'newdata' must be a data.frame with at least one row.\n")
-  
-  if (is.null(Thoriz) && is.null(Dt))
-    stop("Either 'Thoriz' or 'Dt' must be non-null.\n")
-  
-  if (!is.null(Thoriz) && Thoriz <= Tstart)
-    stop("'Thoriz' must be larger than 'Tstart'.\n")
-  
-  if (is.null(Thoriz))
-    Thoriz <- Tstart + Dt
-  
-  # For the Cox model we assume that newdata contains the following variables:
-  #   id      : subject identifier
-  #   time    : time at which covariates are recorded (often 0 for baseline)
-  #   time    : the eventual event (or censoring) time (here the same name)
-  #   event   : event indicator (1 = event, 0 = censoring)
-  # (If your data use different names, you may change the defaults below.)
-  id_var    <- "id"
-  time_var  <- "time"    # covariate update (or baseline) time
-  Time_var  <- "fup_time"    # event time
-  event_var <- "mortality_status"
-  
-  # Check that the required columns exist in newdata:
-  if (is.null(newdata[[id_var]]))
-    stop("cannot find the '", id_var, "' variable in newdata.")
-  if (is.null(newdata[[time_var]]))
-    stop("cannot find the '", time_var, "' variable in newdata.")
-  if (is.null(newdata[[Time_var]]))
-    stop("cannot find the '", Time_var, "' variable in newdata.")
-  if (is.null(newdata[[event_var]]))
-    stop("cannot find the '", event_var, "' variable in newdata.")
-  
-  # Slightly perturb the time points (as in the original code)
-  Tstart <- Tstart + 1e-06
-  Thoriz <- Thoriz + 1e-06
-  
-  # For dynamic prediction we keep only subjects who are at risk at Tstart.
-  # (Assuming one row per subject, newdata[[time_var]] is when the covariates were measured.)
-  # newdata <- newdata[order(newdata[[Time_var]]), ]
-  # newdata <- newdata[newdata[[Time_var]] > Tstart, ]
-  # newdata <- newdata[newdata[[time_var]] <= Tstart, ]
-  newdata <- newdata %>%
-    filter(time <= Tstart,
-           fup_time > Tstart) %>%
-    arrange(id, time) %>%
-    group_by(id) %>%
-    slice(1) %>%
-    ungroup()
-  
-  # Coerce id to a factor (so later tapply() calls work as expected)
-  newdata[[id_var]] <- as.factor(newdata[[id_var]])
-  
-  # Check that at least one subject experienced an event in [Tstart, Thoriz)
-  test1 <- newdata[[Time_var]] < Thoriz & newdata[[event_var]] == 1
-  if (!any(test1))
-    stop("It appears that there are no events in the interval [Tstart, Thoriz).")
-  
-  # Create a copy in which we “update” the covariate time to Tstart.
-  newdata2 <- newdata
-  newdata2[[Time_var]] <- Thoriz
-  newdata2[[event_var]] <- 0  # event indicator is not used in prediction
-  
-  # Define a helper function to compute the predicted event probability
-  # from Tstart to Thoriz for each subject.
-  predict_event_cox <- function(model, data, Thoriz, ...) {
-    data[[Time_var]] <- Thoriz
-    pred_event <- 1-predict(model, data, type = "survival")
-    return(pred_event)
-  }
-  
-  # Compute the predicted event probability for each subject using newdata2.
-  # Then the “dynamic survival probability” is one minus that.
-  pred_event <- predict_event_cox(object, newdata2, Thoriz, ...)
-  si_u_t <- 1-pred_event
-  names(si_u_t) <- newdata2[[id_var]]
-  
-  # For each subject we extract the “last” recorded event time and status.
-  id    <- newdata[[id_var]]
-  Time  <- newdata[[Time_var]]
-  event <- newdata[[event_var]]
-  f <- factor(id, levels = unique(id))
-  Time  <- tapply(Time,  f, tail, 1L)
-  event <- tapply(event, f, tail, 1L)
-  names(Time) <- names(event) <- as.character(unique(id))
-  if (any(dupl <- duplicated(Time))) {
-    Time[dupl] <- Time[dupl] + runif(sum(dupl), 1e-07, 1e-06)
-  }
-  if (!all(names(si_u_t) == names(Time)))
-    stop("Mismatch between subject names in predictions and in newdata.")
-  
-  # Now compute the time-dependent AUC by comparing all pairs of subjects.
-  # (The following block follows the structure of the original code.)
-  auc <- if (length(Time) > 1L) {
-    pairs <- combn(as.character(unique(id)), 2)
-    Ti <- Time[pairs[1, ]]
-    Tj <- Time[pairs[2, ]]
-    di <- event[pairs[1, ]]
-    dj <- event[pairs[2, ]]
-    si_u_t_i <- si_u_t[pairs[1, ]]
-    si_u_t_j <- si_u_t[pairs[2, ]]
-    
-    # Define indicators for the various comparisons.
-    ind1 <- (Ti <= Thoriz & di == 1) & (Tj > Thoriz)
-    ind2 <- (Ti <= Thoriz & di == 0) & (Tj > Thoriz)
-    ind3 <- (Ti <= Thoriz & di == 1) & (Tj <= Thoriz & dj == 0)
-    ind4 <- (Ti <= Thoriz & di == 0) & (Tj <= Thoriz & dj == 0)
-    names(ind1) <- names(ind2) <- names(ind3) <- names(ind4) <-
-      paste(names(Ti), names(Tj), sep = "_")
-    ind <- ind1 | ind2 | ind3 | ind4
-    
-    # For pairs where one of the subjects is censored we use inverse‐probability weighting.
-    # if (any(ind2)) {
-    #   nams <- strsplit(names(ind2[ind2]), "_")
-    #   nams_i <- sapply(nams, "[", 1)
-    #   unq_nams_i <- unique(nams_i)
-    #   pi_u_t <- predict_event_cox(object,
-    #                               newdata[newdata[[id_var]] %in% unq_nams_i, ],
-    #                               Thoriz, ...)
-    #   f_pred <- factor(newdata[newdata[[id_var]] %in% unq_nams_i, ][[id_var]],
-    #                    levels = unique(newdata[[id_var]]))
-    #   names(pi_u_t) <- f_pred
-    #   pi_u_t <- tapply(pi_u_t, f_pred, tail, 1)
-    #   ind[ind2] <- ind[ind2] * pi_u_t[nams_i]
-    # }
-    # if (any(ind3)) {
-    #   nams <- strsplit(names(ind3[ind3]), "_")
-    #   nams_j <- sapply(nams, "[", 2)
-    #   unq_nams_j <- unique(nams_j)
-    #   qi_u_t <- predict_event_cox(object,
-    #                               newdata[newdata[[id_var]] %in% unq_nams_j, ],
-    #                               Thoriz, ...)
-    #   f_pred <- factor(newdata[newdata[[id_var]] %in% unq_nams_j, ][[id_var]],
-    #                    levels = unique(newdata[[id_var]]))
-    #   names(qi_u_t) <- f_pred
-    #   qi_u_t <- 1 - tapply(qi_u_t, f_pred, tail, 1)
-    #   ind[ind3] <- ind[ind3] * qi_u_t[nams_j]
-    # }
-    # if (any(ind4)) {
-    #   nams <- strsplit(names(ind4[ind4]), "_")
-    #   nams_i <- sapply(nams, "[", 1)
-    #   nams_j <- sapply(nams, "[", 2)
-    #   unq_nams_i <- unique(nams_i)
-    #   unq_nams_j <- unique(nams_j)
-    #   pi_u_t <- predict_event_cox(object,
-    #                               newdata[newdata[[id_var]] %in% unq_nams_i, ],
-    #                               Thoriz, ...)
-    #   f_pred_i <- factor(newdata[newdata[[id_var]] %in% unq_nams_i, ][[id_var]],
-    #                      levels = unique(newdata[[id_var]]))
-    #   names(pi_u_t) <- f_pred_i
-    #   pi_u_t <- tapply(pi_u_t, f_pred_i, tail, 1)
-    #   qi_u_t <- predict_event_cox(object,
-    #                               newdata[newdata[[id_var]] %in% unq_nams_j, ],
-    #                               Thoriz, ...)
-    #   f_pred_j <- factor(newdata[newdata[[id_var]] %in% unq_nams_j, ][[id_var]],
-    #                      levels = unique(newdata[[id_var]]))
-    #   names(qi_u_t) <- f_pred_j
-    #   qi_u_t <- 1 - tapply(qi_u_t, f_pred_j, tail, 1)
-    #   ind[ind4] <- ind[ind4] * pi_u_t[nams_i] * qi_u_t[nams_j]
-    # }
-    
-    sum((si_u_t_i < si_u_t_j) * as.numeric(ind), na.rm = TRUE) / sum(ind, na.rm = TRUE)
+      class(out) <- "tvAUC_coxph"
+    } else {
+      # Compute ROC-related metrics, including thresholds, F1 score, and Youden's index.
+      metric_df <- tibble(
+        TP = auc$TP,
+        FP = auc$FP,
+        thres = auc$cut.values
+      ) %>%
+        mutate(
+          precision = TP / (TP + FP),
+          recall = TP, # Sensitivity is equivalent to recall.
+          F1 = 2 * (precision * recall) / (precision + recall),
+          Youden = TP - FP # Youden's index = sensitivity + specificity - 1
+        )
+      
+      # Extract the median threshold corresponding to the highest F1 score.
+      F1score <- median(metric_df[metric_df$F1 == max(metric_df$F1, na.rm = TRUE),]$thres, na.rm = TRUE)
+      
+      # Extract the median threshold corresponding to the highest Youden's index.
+      Youden <- median(metric_df[metric_df$Youden == max(metric_df$Youden, na.rm = TRUE),]$thres, na.rm = TRUE)
+      
+      out <- list(
+        TP = metric_df$TP, 
+        FP = metric_df$FP, 
+        auc = auc$AUC, 
+        thrs = metric_df$thres, 
+        F1score = F1score, 
+        Youden = Youden,
+        Tstart = Tstart, 
+        Thoriz = Thoriz, 
+        nr = length(unique(newdata[[id_var]])),
+        classObject = class(object),
+        nameObject = deparse(substitute(object))
+      )
+      class(out) <- "tvROC_coxph"
+    }
   } else {
-    NA
+    # Compute the Brier score for the specified prediction horizon.
+    brier <- brier(object, newdata = newdata, times = Thoriz)$brier
+    
+    # Output Brier score result with model metadata.
+    out <- list(
+      brier = brier,
+      Tstart = Tstart,
+      Thoriz = Thoriz,
+      nr = length(unique(newdata[[id_var]])),
+      classObject = class(object),
+      nameObject = deparse(substitute(object))
+    )
+    class(out) <- "tvBrier_coxph"
   }
   
-  out <- list(auc = auc, Tstart = Tstart, Thoriz = Thoriz,
-              nr = length(unique(id)),
-              classObject = class(object),
-              nameObject = deparse(substitute(object)))
-  class(out) <- "tvAUC_coxph"
   return(out)
 }
 
+# -----------------------------------------------------------------------------#
+# Print Methods for Time-Dependent Performance Metrics in Survival Analysis
+#
+# Overview:
+#   These functions provide print methods for objects of class "tvAUC_coxph", 
+#   "tvROC_coxph", and "tvBrier_coxph". Each function prints relevant 
+#   time-dependent performance metrics for Cox proportional hazards models or 
+#   joint models.
+#
+# Functions:
+#   - print.tvAUC_coxph: Prints estimated time-dependent AUC.
+#   - print.tvROC_coxph: Prints ROC-related metrics, including key thresholds.
+#   - print.tvBrier_coxph: Prints the computed Brier score for calibration assessment.
+#
+# Notes:
+#   - Each function ensures compatibility with its respective class.
+#   - If the model class is "jm" (joint model), it is indicated in the output.
+#   - The number of subjects at risk at Tstart is reported.
+#
+# -----------------------------------------------------------------------------#
+
+# Print method for "tvAUC_coxph" objects (Time-Dependent AUC)
 print.tvAUC_coxph <- function (x, digits = 4, ...) {
+  
+  # Ensure correct object class
   if (!inherits(x, "tvAUC_coxph"))
-    stop("Use only with 'tvAUC' objects.\n")
+    stop("Use only with 'tvAUC_coxph' objects.\n")
+  
+  # Print model type (Cox or Joint Model)
   if (x$class == "jm")
-    cat("\n\tTime-dependent AUC for the Joint Model",  x$nameObject)
+    cat("\n\tTime-dependent AUC for the Joint Model:", x$nameObject)
   else
-    cat("\n\tTime-dependent AUC for the Cox Model",  x$nameObject)
+    cat("\n\tTime-dependent AUC for the Cox Model:", x$nameObject)
+  
+  # Print estimated AUC
   cat("\n\nEstimated AUC: ", round(x$auc, digits))
-  #cat("\n\nEstimated AUC: ", round(x$auc, digits),
-  #    " (95% CI: ", round(x$low_auc, digits), "-", round(x$upp_auc, digits),
-  #    ")", sep = "")
+  
+  # Optional: Print confidence intervals for AUC if available (currently commented out)
+  # cat("\n\nEstimated AUC: ", round(x$auc, digits),
+  #     " (95% CI: ", round(x$low_auc, digits), "-", round(x$upp_auc, digits),
+  #     ")", sep = "")
+  
+  # Print time horizon at which AUC was estimated
   cat("\nAt time:", round(x$Thoriz, digits))
-  cat("\nUsing information up to time: ", round(x$Tstart, digits),
+  
+  # Print number of subjects at risk at prediction start time
+  cat("\nUsing information up to time:", round(x$Tstart, digits),
       " (", x$nr, " subjects still at risk)", sep = "")
+  
   cat("\n\n")
+  
+  invisible(x)
+}
+
+# Print method for "tvROC_coxph" objects (Time-Dependent ROC Metrics)
+print.tvROC_coxph <- function (x, digits = 4, ...) {
+  
+  # Ensure correct object class
+  if (!inherits(x, "tvROC_coxph"))
+    stop("Use only with 'tvROC_coxph' objects.\n")
+  
+  # Print model type (Cox or Joint Model)
+  if (x$class == "jm")
+    cat("\n\tTime-dependent ROC Metrics for the Joint Model:", x$nameObject)
+  else
+    cat("\n\tTime-dependent ROC Metrics for the Cox Model:", x$nameObject)
+  
+  # Print estimated AUC
+  cat("\n\nEstimated AUC: ", round(x$auc, digits))
+  
+  # Print time horizon at which ROC metrics were computed
+  cat("\nAt time:", round(x$Thoriz, digits))
+  
+  # Print number of subjects at risk at prediction start time
+  cat("\nUsing information up to time:", round(x$Tstart, digits),
+      " (", x$nr, " subjects still at risk)", sep = "")
+  
+  # Print key ROC thresholds
+  cat("\n\nOptimal Thresholds:")
+  cat("\n- F1-score Optimal Threshold:", round(x$F1score, digits))
+  cat("\n- Youden’s Index Optimal Threshold:", round(x$Youden, digits))
+  
+  cat("\n\n")
+  
+  invisible(x)
+}
+
+# Print method for "tvBrier_coxph" objects (Time-Dependent Brier Score)
+print.tvBrier_coxph <- function (x, digits = 4, ...) {
+  
+  # Ensure correct object class
+  if (!inherits(x, "tvBrier_coxph"))
+    stop("Use only with 'tvBrier_coxph' objects.\n")
+  
+  # Print model type (Cox or Joint Model)
+  if (x$class == "jm")
+    cat("\n\tTime-dependent Brier Score for the Joint Model:", x$nameObject)
+  else
+    cat("\n\tTime-dependent Brier Score for the Cox Model:", x$nameObject)
+  
+  # Print estimated Brier score
+  cat("\n\nEstimated Brier Score: ", round(x$brier, digits))
+  
+  # Print time horizon at which the Brier score was computed
+  cat("\nAt time:", round(x$Thoriz, digits))
+  
+  # Print number of subjects at risk at prediction start time
+  cat("\nUsing information up to time:", round(x$Tstart, digits),
+      " (", x$nr, " subjects still at risk)", sep = "")
+  
+  cat("\n\n")
+  
   invisible(x)
 }
 
 # -----------------------------------------------------------------------------#
-# Bootstrap Iteration for Dynamic AUC Evaluation
+# Bootstrap Iteration for Assessing Dynamic AUC and Brier Score Stability
 #
-# This function performs a single bootstrap iteration to assess the stability and 
-# variability of dynamic AUC measures for survival models. It resamples subjects 
-# (with replacement) from the test dataset, reassigns new sequential IDs, and 
-# constructs bootstrap datasets. Dynamic AUC metrics are then computed for both 
-# joint and Cox models over various prediction intervals.
+# Overview:
+#   This function performs a single bootstrap iteration to evaluate the stability 
+#   and variability of time-dependent AUC and Brier score estimates for survival models.
+#   It resamples subjects (with replacement) from the test dataset, reassigns 
+#   sequential IDs, and constructs bootstrap datasets. The function then computes 
+#   dynamic AUC and Brier scores for both joint and Cox models across multiple 
+#   prediction intervals.
 #
 # Parameters:
 #   iteration:
-#     The current bootstrap iteration number (primarily for tracking purposes).
+#     The current bootstrap iteration number (used for tracking).
 #
 #   test_df:
-#     A data frame containing the test dataset. It must include an 'id' column that 
-#     uniquely identifies each subject.
+#     A data frame containing the test dataset. Must include an 'id' column 
+#     uniquely identifying each subject.
 #
 #   models:
-#     A list containing the pre-fitted models required for AUC computation:
+#     A list containing the pre-fitted models required for metric computation:
 #       - joint_model: A joint model (from JMbayes2) for dynamic survival prediction.
 #       - cox_model: A Cox proportional hazards model for dynamic survival prediction.
 #
 # Returns:
-#   A tibble with computed AUC metrics for multiple prediction intervals:
-#     - auc_joint_36: AUC from the joint model for a 36-month prediction interval (Tstart = 0, Dt = 36).
-#     - auc_joint_60: AUC from the joint model for a 60-month prediction interval (Tstart = 0, Dt = 60).
-#     - auc_cox_36:   AUC from the Cox model for a 36-month prediction interval (Tstart = 0, Dt = 36).
-#     - auc_cox_60:   AUC from the Cox model for a 60-month prediction interval (Tstart = 0, Dt = 60).
-#     - auc_joint_1_36: AUC from the joint model starting at 12 months with a 24-month interval (Tstart = 12, Dt = 24).
-#     - auc_joint_1_60: AUC from the joint model starting at 12 months with a 48-month interval (Tstart = 12, Dt = 48).
-#     - auc_cox_1_36:   AUC from the Cox model starting at 12 months with a 24-month interval (Tstart = 12, Dt = 24).
-#     - auc_cox_1_60:   AUC from the Cox model starting at 12 months with a 48-month interval (Tstart = 12, Dt = 48).
+#   A tibble containing the computed AUC and Brier scores for multiple prediction intervals:
+#     - auc_joint_X: AUC from the joint model for different time horizons.
+#     - auc_cox_X: AUC from the Cox model for different time horizons.
+#     - brier_joint_X: Brier score from the joint model for different time horizons.
+#     - brier_cox_X: Brier score from the Cox model for different time horizons.
+#   The X values indicate the time horizon (e.g., 36, 60 months).
 #
 # Dependencies:
-#   This function requires the 'JMbayes2' and 'survivalROC' packages.
+#   This function requires the 'JMbayes2', 'survivalROC', and 'riskRegression' packages.
 #
 # -----------------------------------------------------------------------------#
+
 bootstrap_iteration <- function(iteration, test_df, models) {
   library(JMbayes2)
   library(survivalROC)
@@ -663,69 +575,240 @@ bootstrap_iteration <- function(iteration, test_df, models) {
   # -------------------------------#
   # Resample Subject IDs with Replacement
   # -------------------------------#
-  # This section performs bootstrap resampling to generate a new dataset. Subject IDs are
-  # sampled with replacement, and for each sampled subject, the corresponding rows are extracted.
-  # New sequential IDs are assigned to ensure consistency in the bootstrap dataset.
+  # This step creates a bootstrap sample by resampling subject IDs with replacement.
+  # The corresponding data for each sampled subject is extracted, and a new sequential 
+  # ID is assigned to ensure proper structure in the bootstrap dataset.
   unique_ids <- unique(test_df$id)
   boot_ids <- sample(unique_ids, size = length(unique_ids), replace = TRUE)
   
   boot_data <- bind_rows(lapply(seq_along(boot_ids), function(j) {
     test_df %>%
       filter(id == boot_ids[j]) %>%
-      mutate(id = j)
+      mutate(id = j)  # Assign a new sequential ID
   })) 
   
   # -------------------------------#
   # Compute Dynamic AUC Measures
   # -------------------------------#
-  # The dynamic AUC metrics are computed for different time intervals and starting points using 
-  # both the joint and Cox models. The tvAUC and tvAUC_coxph functions are employed for these calculations.
+  # Computes the time-dependent AUC for both joint and Cox models at different 
+  # prediction horizons (e.g., 36 and 60 months from baseline, as well as from 12 months onward).
+  
   auc_joint_36   <- tvAUC(object = models$joint_model, newdata = boot_data, Tstart = 0, Dt = 36, 
                           type_weights = "IPCW")
   auc_joint_60   <- tvAUC(object = models$joint_model, newdata = boot_data, Tstart = 0, Dt = 60, 
                           type_weights = "IPCW")
-  auc_cox_36 <- tvAUC_coxph(object = models$cox_model, newdata = boot_data, Tstart = 0, Dt = 36,
-                            type = "auc")
-  auc_cox_60 <- tvAUC_coxph(object = models$cox_model, newdata = boot_data, Tstart = 0, Dt = 60,
-                            type = "auc")
+  auc_cox_36 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 0, Dt = 36,
+                       type = "auc")
+  auc_cox_60 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 0, Dt = 60,
+                       type = "auc")
   
   auc_joint_1_36 <- tvAUC(object = models$joint_model, newdata = boot_data, Tstart = 12, Dt = 24, 
                           type_weights = "IPCW")
   auc_joint_1_60 <- tvAUC(object = models$joint_model, newdata = boot_data, Tstart = 12, Dt = 48, 
                           type_weights = "IPCW")
-  auc_cox_1_36 <- tvAUC_coxph(object = models$cox_model, newdata = boot_data, Tstart = 12, Dt = 24,
-                              type = "auc")
-  auc_cox_1_60 <- tvAUC_coxph(object = models$cox_model, newdata = boot_data, Tstart = 12, Dt = 48,
-                              type = "auc")
-  auc_score <- Score(object = list("Cox" = models$cox_model),  # Model(s) to evaluate
-                     formula = Surv(fup_time, mortality_status) ~ gender + age + nyha + x6mw_dist_meter,  # Survival outcome
-                     data = boot_data %>%
-                       arrange(id, time) %>%
-                       group_by(id) %>%
-                       slice(1) %>%
-                       ungroup(),  # Data
-                     times = c(36,60),  # Time points for AUC calculation
-                     cens.method = "ipcw",
-                     cens.model = "km",  # IPCW using Kaplan-Meier estimator
-                     metrics = "AUC")
+  auc_cox_1_36 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 12, Dt = 24,
+                         type = "auc")
+  auc_cox_1_60 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 12, Dt = 48,
+                         type = "auc")
+  
   # -------------------------------#
-  # Return AUC Results as a Tibble
+  # Compute Dynamic Brier Measures
   # -------------------------------#
-  # The computed AUC values for the different models and prediction intervals are combined 
-  # into a tibble for further analysis.
+  # The Brier score is a calibration metric that quantifies the accuracy of predicted 
+  # survival probabilities. It is computed for different time horizons using both 
+  # the joint and Cox models.
+  
+  brier_joint_36   <- tvBrier(object = models$joint_model, newdata = boot_data, Tstart = 0, Dt = 36, 
+                              type_weights = "IPCW")
+  brier_joint_60   <- tvBrier(object = models$joint_model, newdata = boot_data, Tstart = 0, Dt = 60, 
+                              type_weights = "IPCW")
+  brier_cox_36 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 0, Dt = 36,
+                         type = "brier")
+  brier_cox_60 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 0, Dt = 60,
+                         type = "brier")
+  
+  brier_joint_1_36 <- tvBrier(object = models$joint_model, newdata = boot_data, Tstart = 12, Dt = 24, 
+                              type_weights = "IPCW")
+  brier_joint_1_60 <- tvBrier(object = models$joint_model, newdata = boot_data, Tstart = 12, Dt = 48, 
+                              type_weights = "IPCW")
+  brier_cox_1_36 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 12, Dt = 24,
+                           type = "brier")
+  brier_cox_1_60 <- tvEVAL(object = models$cox_model, newdata = boot_data, Tstart = 12, Dt = 48,
+                           type = "brier")
+  
+  # -------------------------------#
+  # Return AUC and Brier Results as a Tibble
+  # -------------------------------#
+  # Combines all computed performance metrics into a tibble for further statistical analysis.
+  
   tibble(
-    auc_joint_36   = auc_joint_36$auc,
-    auc_joint_60   = auc_joint_60$auc,
-    auc_cox_36     = auc_cox_36$auc,
-    auc_cox_60     = auc_cox_60$auc,
-    auc_joint_1_36 = auc_joint_1_36$auc,
-    auc_joint_1_60 = auc_joint_1_60$auc,
-    auc_cox_1_36   = auc_cox_1_36$auc,
-    auc_cox_1_60   = auc_cox_1_60$auc,
-    auc_score_36 = auc_score$AUC$score$AUC[1],
-    auc_score_60 = auc_score$AUC$score$AUC[2]
+    auc_joint_36     = auc_joint_36$auc,
+    auc_cox_36       = auc_cox_36$auc,
+    auc_joint_60     = auc_joint_60$auc,
+    auc_cox_60       = auc_cox_60$auc,
+    auc_joint_1_36   = auc_joint_1_36$auc,
+    auc_cox_1_36     = auc_cox_1_36$auc,
+    auc_joint_1_60   = auc_joint_1_60$auc,
+    auc_cox_1_60     = auc_cox_1_60$auc,
+    brier_joint_36   = brier_joint_36$Brier,
+    brier_cox_36     = brier_cox_36$brier,
+    brier_joint_60   = brier_joint_60$Brier,
+    brier_cox_60     = brier_cox_60$brier,
+    brier_joint_1_36 = brier_joint_1_36$Brier,
+    brier_cox_1_36   = brier_cox_1_36$brier,
+    brier_joint_1_60 = brier_joint_1_60$Brier,
+    brier_cox_1_60   = brier_cox_1_60$brier
   )
 }
+
+# -----------------------------------------------------------------------------#
+# Plot Bootstrap Estimates for AUC and Brier Score
+#
+# Overview:
+#   This function generates a visualization of bootstrap-estimated performance metrics 
+#   (AUC and Brier score) for different survival models, such as the Cox model 
+#   and Joint Model. The function allows filtering, faceting, and customization of 
+#   aesthetics, making it useful for comparing model performance across follow-up 
+#   times and cohorts.
+#
+# Parameters:
+#   data:
+#     A data frame containing bootstrap results, including columns for model type, 
+#     metric type, follow-up time, confidence intervals, and estimated values.
+#
+#   model_filter:
+#     A character vector specifying which models to include in the plot. 
+#     Default: c("Cox model", "Joint Model").
+#
+#   metric_filter:
+#     A character vector specifying which performance metrics to plot. 
+#     Default: c("AUC", "Brier score").
+#
+#   x_var, y_var:
+#     The column names in `data` that represent the x-axis and y-axis values.
+#     Default: x_var = "fup_time" (follow-up time), y_var = "mean" (estimated metric).
+#
+#   color_var:
+#     The column name in `data` that defines color grouping (typically model type).
+#     Default: "model_type".
+#
+#   ymin_var, ymax_var:
+#     Column names specifying the lower and upper confidence interval bounds for error bars.
+#     Default: "lower_ci" and "upper_ci".
+#
+#   color_palette:
+#     The color palette for the plot. Uses `scale_color_brewer()`. 
+#     Default: "Set1".
+#
+#   hline_position:
+#     A numeric value specifying a horizontal reference line position (optional).
+#
+#   hline_color:
+#     The color of the horizontal reference line (if `hline_position` is provided).
+#     Default: "gray40".
+#
+#   facet_rows, facet_cols:
+#     Column names used for faceting rows and columns. 
+#     Default: facet_rows = "fup_start", facet_cols = "cohort".
+#
+#   facet_scales:
+#     Scaling behavior for facets ("fixed", "free", "free_x", or "free_y").
+#     Default: "fixed".
+#
+#   facet_type:
+#     Type of faceting: "grid" (default) or "wrap".
+#
+#   plot_title:
+#     Title of the generated plot.
+#
+# Returns:
+#   A ggplot2 object displaying mean bootstrap estimates with 95% confidence intervals 
+#   for the specified models and performance metrics.
+#
+# Notes:
+#   - The function allows flexible filtering of models and metrics.
+#   - Faceting enables comparison across different cohorts and follow-up periods.
+#   - Error bars represent 95% confidence intervals.
+#   - If `hline_position` is provided, a dashed reference line is added to the plot.
+#
+# -----------------------------------------------------------------------------#
+
+plot_boot_df <- function(data, 
+                         model_filter = c("Cox model", "Joint Model"),
+                         metric_filter = c("AUC", "Brier score"),
+                         x_var = "fup_time", 
+                         y_var = "mean", 
+                         color_var = "model_type", 
+                         ymin_var = "lower_ci", 
+                         ymax_var = "upper_ci",
+                         color_palette = "Set1", 
+                         hline_position = NULL, 
+                         hline_color = "gray40",
+                         facet_rows = "fup_start", 
+                         facet_cols = "cohort",
+                         facet_scales = "fixed",
+                         facet_type = "grid",
+                         plot_title = "Bootstrap Estimates") {
+  
+  # -------------------------------#
+  # Filter Data Based on User Input
+  # -------------------------------#
+  # Retains only the selected models and performance metrics.
+  p <- data %>% 
+    filter(model_type %in% model_filter,
+           metric %in% metric_filter) %>%
+    
+    # -------------------------------#
+    # Create the ggplot2 Visualization
+    # -------------------------------#
+    ggplot(aes(x = .data[[x_var]], y = .data[[y_var]], color = .data[[color_var]])) +
+    
+    # Add point estimates with 95% confidence interval error bars.
+    geom_pointrange(aes(ymin = .data[[ymin_var]], ymax = .data[[ymax_var]]), 
+                    size = 0.5, linewidth = 1, position = position_dodge(width = 0.5)) +
+    
+    # Apply color scheme from RColorBrewer.
+    scale_color_brewer(palette = color_palette) +
+    
+    # -------------------------------#
+    # Customize Labels and Theme
+    # -------------------------------#
+    labs(
+      title    = plot_title,
+      subtitle = "Mean Bootstrap Estimates with 95% Confidence Intervals",
+      x        = "Follow-up Time",
+      y        = "Metric Value",
+      color    = "Model Type"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position  = "bottom"
+    )
+  
+  # -------------------------------#
+  # Apply Faceting Based on User Input
+  # -------------------------------#
+  if (facet_type == "grid") {
+    p <- p + facet_grid(rows = vars(.data[[facet_rows]]), 
+                        cols = vars(.data[[facet_cols]]), 
+                        scales = facet_scales)
+  } else if (facet_type == "wrap") {
+    p <- p + facet_wrap(vars(.data[[facet_rows]], .data[[facet_cols]]), scales = facet_scales)
+  }
+  
+  # -------------------------------#
+  # Add Horizontal Reference Line (Optional)
+  # -------------------------------#
+  if (!is.null(hline_position)) {
+    p <- p + geom_hline(yintercept = hline_position, linetype = "dashed", color = hline_color)
+  }
+  
+  return(p)
+}
+
+# -------------------------------------------------------------------------- #
+## Discrimination Evaluation --------------------------------------------------
+# -------------------------------------------------------------------------- #
 
 #------------------------------------------------------------------------------#
 # Function: create_roc_data
@@ -774,7 +857,7 @@ create_roc_data <- function(model, long_data, Tstart, follow_up_times) {
       auc_value <- round(tvAUC(roc_result)$auc, 3)
     } else {  # Must be a Cox model (coxph)
       
-      roc_result <- tvAUC_coxph(model, newdata = long_data, Tstart = Tstart, Dt = Dt, type = "roc")
+      roc_result <- tvEVAL(model, newdata = long_data, Tstart = Tstart, Dt = Dt, type = "roc")
       # Extract and round the AUC value from the ROC result.
       auc_value <- round(roc_result$auc, 3)
     }
@@ -908,7 +991,7 @@ calc_cal_metrics <- function(model, newdata, Tstart, follow_up_times) {
         ici = cal$metrics[1],
         model_label = paste("Follow-up:", Dt, "months\nEavg:", round(ici, 2)))
     }
-
+    
     # Save both calibration and density data for this follow-up time
     calibration_data[[Dt]] <- list(cal_df = cal_df, density_data = density_data)
   }
