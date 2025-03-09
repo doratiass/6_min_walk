@@ -734,10 +734,11 @@ bootstrap_iteration <- function(iteration, test_df, models) {
 # -----------------------------------------------------------------------------#
 
 plot_boot_df <- function(data, 
-                         model_filter = c("Cox model", "Joint Model"),
-                         metric_filter = c("AUC", "Brier score"),
+                         model_filter = c("Cox Model", "Joint Model"),
+                         metric_filter = c("AUC", "Brier Score"),
                          x_var = "fup_time", 
                          y_var = "mean", 
+                         y_lab = "Metric Value",
                          color_var = "model_type", 
                          ymin_var = "lower_ci", 
                          ymax_var = "upper_ci",
@@ -748,7 +749,8 @@ plot_boot_df <- function(data,
                          facet_cols = "cohort",
                          facet_scales = "fixed",
                          facet_type = "grid",
-                         plot_title = "Bootstrap Estimates") {
+                         plot_title = "Bootstrap Estimates",
+                         plot_subtitle = "Mean Bootstrap Estimates with 95% Confidence Intervals") {
   
   # -------------------------------#
   # Filter Data Based on User Input
@@ -774,10 +776,10 @@ plot_boot_df <- function(data,
     # Customize Labels and Theme
     # -------------------------------#
     labs(
-      title    = plot_title,
-      subtitle = "Mean Bootstrap Estimates with 95% Confidence Intervals",
+      # title    = plot_title,
+      # subtitle = plot_subtitle,
       x        = "Follow-up Time",
-      y        = "Metric Value",
+      y        = y_lab,
       color    = "Model Type"
     ) +
     theme_minimal(base_size = 14) +
@@ -1077,8 +1079,10 @@ plot_dyn_pred <- function(joint_model, data, id, t0, fu_t = 60,
                           fill_CI_long = "#0000FF4D", fill_CI_event = "#FF00004D",
                           col_line_long = "#0000FF", col_line_event = "#FF0000",
                           col_points = "blue", cex_points = 2,
-                          lwd_long = 1, lwd_event = 1, main = NULL,
-                          xlim = NULL) {
+                          lwd_long = 1, lwd_event = 1, main = NULL, xlim = NULL,
+                          add_labs = TRUE, x_lab = "Time (months)", 
+                          y_lab = "6 minute walk distance (meters)",
+                          add_sec_y = TRUE, sec_y_lab = "Event Probability") {
   
   # -------------------------------------------------------------------------- #
   # Prepare the data for the specific subject and landmark time (t0)
@@ -1181,7 +1185,7 @@ plot_dyn_pred <- function(joint_model, data, id, t0, fu_t = 60,
   # -------------------------------------------------------------------------- #
   # Generate the Dynamic Predictions Plot -------------------------------------
   # -------------------------------------------------------------------------- #
-  ggplot() +
+  p <- ggplot() +
     # Plot longitudinal predictions with a confidence interval ribbon
     geom_ribbon(data = long_data, aes(x = times_long, ymin = low_long, ymax = upp_long),
                 fill = fill_CI_long, alpha = 0.3) +
@@ -1196,20 +1200,14 @@ plot_dyn_pred <- function(joint_model, data, id, t0, fu_t = 60,
     geom_ribbon(data = event_data, aes(x = times_event, ymin = low_event, ymax = upp_event),
                 fill = fill_CI_event, alpha = 0.3) +
     geom_line(data = event_data, aes(x = times_event, y = preds_event),
-              color = col_line_event, linewidth = lwd_event) +
-    # Configure the y-axis to include a secondary axis for event probability
-    scale_y_continuous(
-      sec.axis = sec_axis(~ . / y_axis_factor, name = "Event Probability",
-                          breaks = seq(0, 1, by = 0.2))
-    ) +
+              color = col_line_event, linewidth = lwd_event)+
     # Configure x-axis breaks
     scale_x_continuous(breaks = seq(0, max(event_data$times_event), by = 6)) +
     coord_cartesian(ylim = y_lim) +
     # Add labels and title to the plot
     labs(
-      title = paste("Dynamic Predictions Plot", main),
-      x = "Time (months)",
-      y = "6 minute walk distance (meters)"
+      x = "",
+      y = ""
     ) +
     theme_minimal(base_size = 14) +
     theme(
@@ -1218,8 +1216,29 @@ plot_dyn_pred <- function(joint_model, data, id, t0, fu_t = 60,
       legend.position = "bottom",
       axis.title = element_text(size = 14),
       axis.text = element_text(size = 12),
-      plot.title = element_text(size = 16, hjust = 0.5)
+      plot.title = element_text(size = 16, hjust = 0.5),
+      plot.margin = unit(c(0, 0, 0, 0), "cm")
     )
+  
+  if (add_labs) {
+    p <- p +
+      labs(
+        title = paste("Dynamic Predictions Plot", main),
+        x = x_lab,
+        y = y_lab
+      )
+  }
+  
+  if (add_sec_y) {
+    p <- p  +
+      # Configure the y-axis to include a secondary axis for event probability
+      scale_y_continuous(
+        sec.axis = sec_axis(~ . / y_axis_factor, name = sec_y_lab,
+                            breaks = seq(0, 1, by = 0.2))
+      ) 
+  }
+  
+  return(p)
 }
 
 

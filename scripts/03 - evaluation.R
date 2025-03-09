@@ -125,19 +125,22 @@ boot_eval_summary <- bind_rows(
 # Plot ROC-AUC for different models and time points.
 plot_boot_df(boot_eval_summary, 
              metric_filter = "AUC", 
-             plot_title = "Time-Dependent ROC-AUC Estimates",
-             hline_position = 0.5)
+             y_lab = "AUC",
+             # plot_title = "Models evaluation Estimates",
+             plot_title = "",
+             plot_subtitle = "",
+             hline_position = 0.5) -> auc_plot
 
 # Save the AUC plot.
 ggsave(file.path("export", "boot_auc_graph.jpeg"), last_plot(), 
        width = 30, height = 20, dpi = 300, background = "white", units = "cm")
 
 # Plot ROC-AUC differencec for different models and time points.
-lot_boot_df(boot_eval_summary, 
-            metric_filter = "AUC", 
-            model_filter = "AUC differences between joint and Cox models",
-            plot_title = "ROC-AUC",
-            hline_position = 0)
+plot_boot_df(boot_eval_summary, 
+             model_filter = "Difference",
+             metric_filter = "AUC", 
+             plot_title = "AUC differences between joint and Cox models",
+             hline_position = 0)
 
 # Save the AUC plot.
 ggsave(file.path("export", "boot_auc_diff_graph.jpeg"), last_plot(), 
@@ -145,9 +148,11 @@ ggsave(file.path("export", "boot_auc_diff_graph.jpeg"), last_plot(),
 
 # Plot Brier scores.
 plot_boot_df(boot_eval_summary, 
-             metric_filter = "Brier score", 
-             plot_title = "Brier Score Estimates",
-             hline_position = 0)
+             metric_filter = "Brier Score", 
+             y_lab = "Brier Score", 
+             plot_title = "",
+             plot_subtitle = "",
+             hline_position = 0) -> brier_plot
 
 # Save the Brier score plot.
 ggsave(file.path("export", "boot_brier_graph.jpeg"), last_plot(), 
@@ -155,15 +160,26 @@ ggsave(file.path("export", "boot_brier_graph.jpeg"), last_plot(),
 
 # Plot Brier scores differencec.
 plot_boot_df(boot_eval_summary, 
-             metric_filter = "Brier score", 
-             model_filter = "Brier score differences between joint and Cox models",
-             plot_title = "Brier score",
+             model_filter = "Difference",
+             metric_filter = "Brier Score", 
+             plot_title = "Brier score differences between joint and Cox models",
              hline_position = 0)
 
 # Save the Brier score diff plot.
 ggsave(file.path("export", "boot_brier_diff_graph.jpeg"), last_plot(), 
        width = 30, height = 20, dpi = 300, background = "white", units = "cm")
 
+
+ggarrange(auc_plot +
+            rremove("xlab") +
+            rremove("x.text"),
+          brier_plot,
+          nrow = 2,
+          common.legend = TRUE,
+          legend = "bottom")
+
+ggsave(file.path("export", "fig_1.jpeg"), last_plot(), 
+       width = 900, height = 600, dpi = 130, background = "white", units = "px")
 
 # ============================================================================ #
 # Dynamic Predictions for Selected Patients -----------------------------------
@@ -179,26 +195,57 @@ ggarrange(
 )
 
 ggarrange(
-  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 0.1),
-  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 6.1),
-  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 12.1),
-  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 24.1),
-  nrow = 4
-)
-
-## stayed the same
-ggarrange(
-  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 0.1),
-  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 6.1),
-  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 12.1),
-  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 24.1),
-  nrow = 4
-)
-
-ggarrange(
   plot_dyn_pred(jointFit, long_df, id = 1009, t0 = 2), 
   plot_dyn_pred(jointFit, long_df, id = 1009, t0 = 12),
   plot_dyn_pred(jointFit, long_df, id = 1009, t0 = 24),
   plot_dyn_pred(jointFit, long_df, id = 1009, t0 = 36),
   nrow = 4
 )
+
+# Create plots for Patient 282
+pat_1 <- ggarrange(
+  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 0.1,
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 6.1,
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 12.1,
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 24.1,
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = ""),
+  nrow = 4, labels = "AUTO"#, align = "hv"
+)
+
+# Create plots for Patient 51
+pat_2 <- ggarrange(
+  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 0.1,
+                add_labs = FALSE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 6.1,
+                add_labs = FALSE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 12.1,
+                add_labs = FALSE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 24.1,
+                add_labs = FALSE, sec_y_lab = ""),
+  nrow = 4#, align = "hv"
+)
+
+# Combine both sets into a single figure
+final_plot <- ggarrange(
+  pat_1, pat_2,
+  ncol = 2,
+#  labels = c("Patient 282", "Patient 51")#,
+    heights = c(1, 1)
+)
+
+# Annotate figure with a main title
+annotate_figure(final_plot, 
+                top = text_grob("Dynamic Prediction of Mortality Risk Over Time",
+                                face = "bold", size = 16),
+                left = text_grob("6 minute walk distance (meters)", 
+                                 rot = 90, size = 12),
+                right = text_grob("Predicted Probability of Mortality", 
+                                  rot = 270, size = 12),
+                bottom = text_grob("Time (months)", 
+                                   rot = 0, vjust = -0.5, size = 12))
+
+ggsave(file.path("export", "fig_2.jpeg"), last_plot(), 
+       width = 25, height = 20, dpi = 300, background = "white", units = "cm")
