@@ -308,7 +308,13 @@ clean_df_identified <- raw_df %>%
     age             = age / age_scale,
     # Define the first visit date and compute time (in months) from the first visit
     first_visit     = first(x6mw_date),
-    time            = round(time_length(x6mw_date - first_visit, "months")),
+    # time            = round(time_length(x6mw_date - first_visit, "months")),
+    time_raw            = time_length(x6mw_date - first_visit, "months"),
+    time = case_when(
+      time_raw <= 0 ~ 0,
+      time_raw <= 1  ~ 1,
+      TRUE         ~ round(time_raw)
+    ),
     # Compute the time difference (in months) between the follow-up date and the first visit
     time_diff_months = time_length(fup_date - first_visit, "months"),
     # Define the last follow-up date based on mortality status and maximum follow-up time
@@ -330,12 +336,35 @@ clean_df_identified <- raw_df %>%
   # Keep only records within the maximum follow-up period
   filter(time <= max_fup_time) %>%
   # Select the final set of variables for analysis
-  select(id, mortality_status, fup_time, time, x6mw_dist_meter, all_of(seattle_vars))
+  select(id, mortality_status, fup_time, time, x6mw_dist_meter, all_of(seattle_vars)) %>%
+  group_by(id, mortality_status, fup_time, time) %>%
+  summarise(
+    across(where(is.numeric), \(x) mean(x, na.rm = TRUE)),  # Take mean for numeric variables
+    across(where(~ !is.numeric(.)), \(x) first(x))          # Take the first value for non-numeric variables
+  ) %>%
+  ungroup()
+
+# -------------------------------------------------------------------------- #
+## Anonymize the Data and Create a De-Identified Dataset ####
+# -------------------------------------------------------------------------- #
+# Create a mapping table
+unique_ids <- unique(clean_df_identified$id)
+anon_ids <- seq_along(unique_ids)
+id_map <- data.frame(Original_ID = unique_ids, Anonymized_ID = anon_ids)
+
+# Replace original IDs with anonymized IDs
+clean_df <- id_map %>%
+  right_join(clean_df_identified, by = c("Original_ID" = "id")) %>%
+  select(-Original_ID) %>%
+  rename(id = Anonymized_ID)
+
+# Save the mapping table
+write_csv(id_map, "data/id_mapping.csv")
 
 # -------------------------------------------------------------------------- #
 ## Generate Baseline Summary Table (Table 1) ####
 # -------------------------------------------------------------------------- #
-tbl_1 <- clean_df_identified %>%
+tbl_1 <- clean_df %>%
   group_by(id) %>%
   # Compute the number of 6MWT tests per subject and the overall change from first to last measurement
   mutate(
@@ -359,29 +388,13 @@ tbl_1 <- clean_df_identified %>%
               statistic = list(all_continuous() ~ "{mean} ({sd})"),
               value = list(label_get("gender") ~ "Male"),
               missing = "no") %>%
+  add_overall() %>%
   add_n(statistic = "{N_miss} ({p_miss})") %>%
   modify_header(n = "**Missing**") %>%
   add_p()
 
 # Save the summary table as an HTML file
 gt::gtsave(as_gt(tbl_1), file = "export/tbl_1.html")
-
-# -------------------------------------------------------------------------- #
-## Anonymize the Data and Create a De-Identified Dataset ####
-# -------------------------------------------------------------------------- #
-# Create a mapping table
-unique_ids <- unique(clean_df_identified$id)
-anon_ids <- seq_along(unique_ids)
-id_map <- data.frame(Original_ID = unique_ids, Anonymized_ID = anon_ids)
-
-# Replace original IDs with anonymized IDs
-clean_df <- id_map %>%
-  right_join(clean_df_identified, by = c("Original_ID" = "id")) %>%
-  select(-Original_ID) %>%
-  rename(id = Anonymized_ID)
-
-# Save the mapping table
-write_csv(id_map, "data/id_mapping.csv")
 
 # -------------------------------------------------------------------------- #
 ## Save the Final Cleaned Data and Clean Up Workspace ####

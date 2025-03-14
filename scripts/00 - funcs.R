@@ -738,8 +738,10 @@ plot_boot_df <- function(data,
                          metric_filter = c("AUC", "Brier Score"),
                          x_var = "fup_time", 
                          y_var = "mean", 
+                         x_lab = "Follow-up Time",
                          y_lab = "Metric Value",
                          color_var = "model_type", 
+                         mirror = FALSE,
                          ymin_var = "lower_ci", 
                          ymax_var = "upper_ci",
                          color_palette = "Set1", 
@@ -756,29 +758,36 @@ plot_boot_df <- function(data,
   # Filter Data Based on User Input
   # -------------------------------#
   # Retains only the selected models and performance metrics.
-  p <- data %>% 
-    filter(model_type %in% model_filter,
-           metric %in% metric_filter) %>%
-    
-    # -------------------------------#
-    # Create the ggplot2 Visualization
-    # -------------------------------#
-    ggplot(aes(x = .data[[x_var]], y = .data[[y_var]], color = .data[[color_var]])) +
-    
-    # Add point estimates with 95% confidence interval error bars.
-    geom_pointrange(aes(ymin = .data[[ymin_var]], ymax = .data[[ymax_var]]), 
-                    size = 0.5, linewidth = 1, position = position_dodge(width = 0.5)) +
-    
+  if (mirror) {
+    p <- data %>% 
+      mutate_at(vars(mean, lower_ci, upper_ci), ~ ifelse(fup_start == "Baseline", ., - .)) %>%
+      filter(model_type %in% model_filter,
+             metric %in% metric_filter) %>%
+      ggplot(aes(x = .data[[x_var]], y = .data[[y_var]], color = .data[[color_var]])) +
+      # Add point estimates with 95% confidence interval error bars.
+      geom_pointrange(aes(xmin = .data[[ymin_var]], xmax = .data[[ymax_var]]), 
+                      size = 0.5, linewidth = 1, position = position_dodge(width = 0.5)) +
+      scale_x_continuous(labels = function(x) abs(x))
+  } else {
+    p <- data %>% 
+      filter(model_type %in% model_filter,
+             metric %in% metric_filter) %>%
+      ggplot(aes(x = .data[[x_var]], y = .data[[y_var]], color = .data[[color_var]])) +
+      # Add point estimates with 95% confidence interval error bars.
+      geom_pointrange(aes(ymin = .data[[ymin_var]], ymax = .data[[ymax_var]]), 
+                      size = 0.5, linewidth = 1, position = position_dodge(width = 0.5))
+  }
+  
+  # -------------------------------#
+  # Customize Labels and Theme
+  # -------------------------------#
+  p <- p +
     # Apply color scheme from RColorBrewer.
     scale_color_brewer(palette = color_palette) +
-    
-    # -------------------------------#
-    # Customize Labels and Theme
-    # -------------------------------#
     labs(
       # title    = plot_title,
       # subtitle = plot_subtitle,
-      x        = "Follow-up Time",
+      x        = x_lab,
       y        = y_lab,
       color    = "Model Type"
     ) +
@@ -791,8 +800,7 @@ plot_boot_df <- function(data,
   # Apply Faceting Based on User Input
   # -------------------------------#
   if (facet_type == "grid") {
-    p <- p + facet_grid(rows = vars(.data[[facet_rows]]), 
-                        cols = vars(.data[[facet_cols]]), 
+    p <- p + facet_grid(as.formula(paste(facet_rows,"~",facet_cols)),
                         scales = facet_scales)
   } else if (facet_type == "wrap") {
     p <- p + facet_wrap(vars(.data[[facet_rows]], .data[[facet_cols]]), scales = facet_scales)
@@ -802,7 +810,11 @@ plot_boot_df <- function(data,
   # Add Horizontal Reference Line (Optional)
   # -------------------------------#
   if (!is.null(hline_position)) {
-    p <- p + geom_hline(yintercept = hline_position, linetype = "dashed", color = hline_color)
+    if (mirror) {
+      p <- p + geom_vline(xintercept = hline_position, linetype = "dashed", color = hline_color)
+    } else {
+      p <- p + geom_hline(yintercept = hline_position, linetype = "dashed", color = hline_color)
+    }
   }
   
   return(p)
@@ -1100,7 +1112,7 @@ plot_dyn_pred <- function(joint_model, data, id, t0, fu_t = 60,
   predLong <- predict(
     joint_model,
     newdata = ND,
-    times = seq(t0, fu_t, length.out = 51),  # Predict from t0 up to 60 months
+    times = seq(t0, fu_t, length.out = 51),  # Predict from t0 up to fu_t
     type = "subject_specific",
     return_newdata = TRUE
   )

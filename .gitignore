@@ -8,3 +8,5 @@ export
 .DS_Store
 6_min_walk.Rproj
 app.R
+/scripts/10 - old deleted.R
+/gitignore
