@@ -741,6 +741,7 @@ plot_boot_df <- function(data,
                          x_lab = "Follow-up Time",
                          y_lab = "Metric Value",
                          color_var = "model_type", 
+                         ast_y = 0.85,
                          mirror = FALSE,
                          ymin_var = "lower_ci", 
                          ymax_var = "upper_ci",
@@ -776,6 +777,20 @@ plot_boot_df <- function(data,
       # Add point estimates with 95% confidence interval error bars.
       geom_pointrange(aes(ymin = .data[[ymin_var]], ymax = .data[[ymax_var]]), 
                       size = 0.5, linewidth = 1, position = position_dodge(width = 0.5))
+  }
+  
+  # -------------------------------#
+  # Add Significance Asterisks
+  # -------------------------------#
+  sig_data <- data %>% filter(model_type == "Difference",
+                              metric %in% metric_filter,
+                              sign(lower_ci) == sign(upper_ci))  # Subset significant results
+  
+  if (nrow(sig_data) > 0) {
+    p <- p + geom_text(data = sig_data, 
+                       aes(y = ast_y, label = "*"), 
+                       size = 6, 
+                       color = "black")
   }
   
   # -------------------------------#

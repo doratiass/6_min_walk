@@ -169,62 +169,53 @@ ggsave(file.path("export", "fig_2.jpeg"), last_plot(),
 # Dynamic Predictions for Selected Patients -----------------------------------
 # ============================================================================ #
 # Generate dynamic predictions for different patients at multiple time points.
-
-ggarrange(
-  plot_dyn_pred(jointFit, long_df, id = 654, t0 = 0.1), 
-  plot_dyn_pred(jointFit, long_df, id = 654, t0 = 6.1),
-  plot_dyn_pred(jointFit, long_df, id = 654, t0 = 12.1),
-  plot_dyn_pred(jointFit, long_df, id = 654, t0 = 24.1),
-  nrow = 4
-)
-
-ggarrange(
-  plot_dyn_pred(jointFit, long_df, id = 756, t0 = 0.1), 
-  plot_dyn_pred(jointFit, long_df, id = 756, t0 = 3.1),
-  plot_dyn_pred(jointFit, long_df, id = 756, t0 = 6.1),
-  plot_dyn_pred(jointFit, long_df, id = 756, t0 = 12.1),
-  nrow = 4
-)
-
-# HIGH - 1003, 444, 172, 657, 654
-# Create plots for Patient 282
-pat_1 <- ggarrange(
+# Create plots for high 282 (more options 1003, 444, 172, 657, 654)
+pat_high <- ggarrange(
   plot_dyn_pred(jointFit, long_df, id = 282, t0 = 0.1,
                 add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
   plot_dyn_pred(jointFit, long_df, id = 282, t0 = 6.1,
                 add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
   plot_dyn_pred(jointFit, long_df, id = 282, t0 = 12.1,
                 add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
-  plot_dyn_pred(jointFit, long_df, id = 282, t0 = 24.1,
-                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = ""),
-  nrow = 4, labels = "AUTO"#, align = "hv"
+  nrow = 3, labels = "AUTO"#, align = "hv"
 )
 
-# Create plots for Patient 51
-pat_2 <- ggarrange(
+# Create plots for medium 51
+pat_med <- ggarrange(
   plot_dyn_pred(jointFit, long_df, id = 51, t0 = 0.1,
-                add_labs = FALSE, sec_y_lab = "") + rremove("x.text"),
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
   plot_dyn_pred(jointFit, long_df, id = 51, t0 = 6.1,
-                add_labs = FALSE, sec_y_lab = "") + rremove("x.text"),
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
   plot_dyn_pred(jointFit, long_df, id = 51, t0 = 12.1,
-                add_labs = FALSE, sec_y_lab = "") + rremove("x.text"),
-  plot_dyn_pred(jointFit, long_df, id = 51, t0 = 24.1,
-                add_labs = FALSE, sec_y_lab = ""),
-  nrow = 4#, align = "hv"
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
+  nrow = 3#, align = "hv"
+)
+# Create plots for low 686 (more options  210 778)
+pat_low <- ggarrange(
+  plot_dyn_pred(jointFit, long_df, id = 686, t0 = 0.1,
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 686, t0 = 6.1,
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
+  plot_dyn_pred(jointFit, long_df, id = 686, t0 = 12.1,
+                add_labs = FALSE, add_sec_y = TRUE, sec_y_lab = "") + rremove("x.text"),
+  nrow = 3#, align = "hv"
 )
 
 # Combine both sets into a single figure
 final_plot <- ggarrange(
-  pat_1, pat_2,
-  ncol = 2,
-  #  labels = c("Patient 282", "Patient 51")#,
-  heights = c(1, 1)
+  pat_high, pat_med, pat_low,
+  ncol = 3,
+  label.y = 1,
+  label.x = 0.4,
+  vjust = 1.5,
+  labels = c("High", "Medium", "Low"),
+  heights = 2
 )
 
 # Annotate figure with a main title
 annotate_figure(final_plot, 
-                top = text_grob("Dynamic Prediction of Mortality Risk Over Time",
-                                face = "bold", size = 16),
+                # top = text_grob("Dynamic Prediction of Mortality Risk Over Time",
+                #                 face = "bold", size = 16),
                 left = text_grob("6 minute walk distance (meters)", 
                                  rot = 90, size = 12),
                 right = text_grob("Predicted Probability of Mortality", 
@@ -232,5 +223,5 @@ annotate_figure(final_plot,
                 bottom = text_grob("Time (months)", 
                                    rot = 0, vjust = -0.5, size = 12))
 
-ggsave(file.path("export", "fig_2.jpeg"), last_plot(), 
-       width = 25, height = 20, dpi = 300, background = "white", units = "cm")
+ggsave(file.path("export", "fig_3.jpeg"), last_plot(), 
+       width = 40, height = 20, dpi = 300, background = "white", units = "cm")

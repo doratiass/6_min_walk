@@ -146,6 +146,7 @@ ggsave(file.path("export", "boot_auc_diff_graph.jpeg"), last_plot(),
 plot_boot_df(boot_eval_summary, 
              metric_filter = "Brier Score", 
              y_lab = "Brier Score", 
+             ast_y = 0.275,
              plot_title = "",
              plot_subtitle = "",
              hline_position = 0) -> brier_plot
@@ -179,7 +180,7 @@ ggarrange(auc_plot +
           legend = "bottom")
 
 ggsave(file.path("export", "fig_1.jpeg"), last_plot(), 
-       width = 25, height = 20, dpi = 300, background = "white", units = "cm")
+       width = 25, height = 15, dpi = 300, background = "white", units = "cm")
 
 
 
