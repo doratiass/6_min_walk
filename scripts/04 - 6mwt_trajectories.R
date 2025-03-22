@@ -107,7 +107,7 @@ new_df %>%
     color = "Group"
   ) +
   theme(legend.position = "bottom") +
- # facet_wrap(~gender) +
+  # facet_wrap(~gender) +
   scale_color_brewer(palette="Set1") -> pred_6mwt_plot
 
 # ============================================================================ #
@@ -141,10 +141,11 @@ ggsurvplot(
   data = surv_df,
   xlim = c(0, 60),
   conf.int = TRUE,               # Show confidence intervals
- # pval = TRUE,                   # Display p-value from log-rank test
+  #  pval = TRUE,                   # Display p-value from log-rank test
+  # pval.method = TRUE,
   risk.table = TRUE,             # Add risk table below the plot
   risk.table.col = "strata",     # Color the risk table by group
-  legend.title = "Group",
+  legend.title = "",
   legend.labs = c("Low", "Medium", "High"),
   xlab = "Time (months)",
   ylab = "Survival Probability",
@@ -155,15 +156,17 @@ ggsurvplot(
 # -------------------------------------------------------------------------- #
 ## Figure 2 ------------------------------------------------------------------
 # -------------------------------------------------------------------------- #
-ggarrange(pred_6mwt_plot,
-          km_plot$plot + theme(legend.position = "none"),
+ggarrange(pred_6mwt_plot + theme(legend.position = "none"),
+          km_plot$plot + theme(legend.position = c(.05, .05),
+                               legend.justification = c("left", "bottom"),
+                               legend.box.just = "right",
+                               legend.margin = margin(6, 6, 6, 6)),
           ncol = 2,
           labels = c("A", "B"),
-          common.legend = TRUE,
-          legend = "bottom")
+          common.legend = FALSE)
 
 ggsave(file.path("export", "fig_2.jpeg"), last_plot(), 
-       width = 30, height = 15, dpi = 300, background = "white", units = "cm")
+       width = 20, height = 10, dpi = 300, background = "white", units = "cm")
 
 # ============================================================================ #
 # Dynamic Predictions for Selected Patients -----------------------------------
@@ -201,7 +204,9 @@ pat_low <- ggarrange(
   nrow = 3#, align = "hv"
 )
 
-# Combine both sets into a single figure
+# -------------------------------------------------------------------------- #
+## Figure 3 ------------------------------------------------------------------
+# -------------------------------------------------------------------------- #
 final_plot <- ggarrange(
   pat_high, pat_med, pat_low,
   ncol = 3,
@@ -224,4 +229,4 @@ annotate_figure(final_plot,
                                    rot = 0, vjust = -0.5, size = 12))
 
 ggsave(file.path("export", "fig_3.jpeg"), last_plot(), 
-       width = 40, height = 20, dpi = 300, background = "white", units = "cm")
+       width = 25, height = 15, dpi = 300, background = "white", units = "cm")

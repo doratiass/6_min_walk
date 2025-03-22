@@ -107,7 +107,7 @@ boot_eval_summary <- bind_rows(
                                 str_detect(res, "cox") ~ "Cox Model",
                                 str_detect(res, "diff") ~ "Difference"),
          fup_start = ifelse(str_detect(res, "_1_"), "1-year follow-up", "Baseline"),
-         fup_time = ifelse(str_detect(res, "36"), "36 months", "60 months"),
+         fup_time = ifelse(str_detect(res, "36"), "36 (m)", "60 (m)"),
          metric = ifelse(str_detect(res, "auc"), "AUC", "Brier Score"))
 
 # Save the results.
@@ -170,17 +170,26 @@ ggsave(file.path("export", "boot_brier_diff_graph.jpeg"), last_plot(),
 # -------------------------------------------------------------------------- #
 ## Figure 1 ------------------------------------------------------------------
 # -------------------------------------------------------------------------- #
-ggarrange(auc_plot +
-            theme(axis.text.x = element_blank()) +
-            rremove("xlab"),
+ggarrange(auc_plot  +
+            ggtitle("AUC") +
+            theme(plot.title = element_text(hjust = 0.5),
+                  axis.title.y = element_blank(),
+                  strip.text.y.right = element_blank(),
+                  plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm"),
+                  panel.spacing = unit(0.01, "cm")),
+          #      rremove("xlab"),
           brier_plot +
-            theme(strip.text.x.top = element_blank()),
-          nrow = 2,
+            ggtitle("Brier Score") + 
+            theme(plot.title = element_text(hjust = 0.5),
+                  axis.title.y = element_blank(),
+                  plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm"),
+                  panel.spacing = unit(0.05, "cm")),
+          ncol = 2,
           common.legend = TRUE,
           legend = "bottom")
 
 ggsave(file.path("export", "fig_1.jpeg"), last_plot(), 
-       width = 25, height = 15, dpi = 300, background = "white", units = "cm")
+       width = 20, height = 12, dpi = 300, background = "white", units = "cm")
 
 
 
