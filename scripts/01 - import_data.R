@@ -376,6 +376,11 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
       medications,
       ignore.case = TRUE
     ),
+    arni = grepl(
+      "Sacubitril",
+      medications,
+      ignore.case = TRUE
+    ),
     statin = grepl(
       "Atorvastatin|Simvastatin|Rosuvastatin|Pravastatin|Fluvastatin|Lovastatin|Pitavastatin",
       medications,

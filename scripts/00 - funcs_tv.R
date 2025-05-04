@@ -63,38 +63,12 @@ seattle_vars <- c(
   "fusid",
   "k_spare",
   "allopurinol",
-  "dm",
-  "htn",
-  "lipid",
   "bmi",
   "statin",
   "ace_arb",
   "beta_blocker",
-  "sglt2",
-  "arni",
   "na",
-  "hgb",
-  "smoke"
-)
-
-small_seattle_vars <- c(
-  "age",
-  "gender",
-  "ischemic_etiology",
-  "sbp",
-  "nyha",
-  "fusid",
-  "k_spare",
-  "allopurinol",
-  "bmi",
-  "statin",
-  "ace_arb",
-  "beta_blocker",
-  "sglt2",
-  "arni",
-  "na",
-  "hgb",
-  "smoke"
+  "hgb"
 )
 # ============================================================================ #
 # Variable Labeling -----------------------------------------------------------
@@ -107,7 +81,7 @@ vars_dict <- tibble(
   "gender" = "Sex (M)",
   "kupa" = "Healthcare provider",
   "mortality_status" = "Mortality status",
-  "fup_time" = "Follow-up time (months)",
+  "fup_time" = "Follow-up time",
   "nyha" = "NYHA class",
   "ischemic_etiology" = "Ischemic etiology",
   "sbp" = "Systolic blood pressure",
@@ -123,13 +97,7 @@ vars_dict <- tibble(
   "beta_blocker" = "Beta blockers treatment",
   "arbs" = "ARBs treatment",
   "diuretic" = "Diuretics treatment",
-  "k_spare" = "Mineralocorticoid receptor antagonist treatment",
-  "sglt2" = "Sodium-glucose cotransporter-2 inhibitors treatment",
-  "arni" = "Angiotensin receptor-neprilysin inhibitors treatment",
-  "dm" = "Diabetes mellitus",
-  "smoke" = "Smoking status",
-  "lipid" = "Hyperlipidemia",
-  "htn" = "Hypertension",
+  "k_spare" = "Potassium-sparing diuretics treatment",
   "thiazide" = "Thiazide diuretics treatment",
   "allopurinol" = "Allopurinol treatment",
   "na" = "Sodium",
@@ -252,6 +220,7 @@ jointfit_tbl <- function(
   return(ft)
 }
 
+
 create_train_test <- function(df, follow_up, V = 5, id_var = "id", seed = 229) {
   # Create the cross-validation folds using create_folds
   CVdats <- create_folds(df, V = V, id_var = id_var, seed = seed)
@@ -288,6 +257,27 @@ create_cox_df <- function(data, Tstart) {
   return(data)
 }
 
+create_tv_df <- function(long_df, stop = NULL) {
+  temp <- tmerge(
+    create_cox_df(long_df, 0),
+    create_cox_df(long_df, 0),
+    id = id,
+    endpt = event(fup_time, mortality_status)
+  )
+
+  if (!is.null(stop)) {
+    long_df <- long_df %>% filter(time <= stop)
+  }
+
+  tv_df <- tmerge(
+    temp,
+    long_df,
+    id = id,
+    x6mw_dist_meter_new = tdc(time, x6mw_dist_meter)
+  )
+
+  return(tv_df)
+}
 
 fit_models <- function(data_list, full = FALSE) {
   # Extract the training dataset from the input list.
@@ -371,9 +361,16 @@ fit_models <- function(data_list, full = FALSE) {
       y = TRUE
     )
 
+    Coxfit_tv <- coxph(
+      Surv(tstart, tstop, endpt) ~ gender + age + nyha + x6mw_dist_meter_new,
+      data = create_tv_df(long_df_train),
+      id = id
+    )
+
     models <- list(
       joint_model = jointFit_train,
-      cox_model = CoxFit_six_train
+      cox_model = CoxFit_six_train,
+      cox_model_tv = Coxfit_tv
     )
   }
 
@@ -463,6 +460,7 @@ tvEVAL <- function(
   id_var = "id",
   time_var = "time",
   Time_var = "fup_time",
+  entry_var = NULL,
   event_var = "mortality_status",
   type = c("auc", "roc", "brier"),
   ...
@@ -489,6 +487,20 @@ tvEVAL <- function(
   # Compute 'Dt' if it is not explicitly provided.
   if (is.null(Dt)) Dt <- Thoriz - Tstart
 
+  # Apply a small numerical adjustment to Tstart and Thoriz to avoid precision issues.
+  Tstart <- Tstart + 1e-06
+  Thoriz <- Thoriz + 1e-06
+
+  # Filter dataset to retain only subjects at risk at Tstart.
+  # If a subject has multiple records, only the most recent record before Tstart is kept.
+  if (!is.null(entry_var)) {
+    newdata <- create_tv_df(newdata, stop = Tstart)
+    entry <- newdata[[time_var]]
+  } else {
+    newdata <- create_cox_df(newdata, Tstart)
+    entry <- NULL
+  }
+
   # Verify that 'newdata' contains the required columns.
   if (is.null(newdata[[id_var]]))
     stop("Column '", id_var, "' not found in newdata.")
@@ -499,14 +511,6 @@ tvEVAL <- function(
   if (is.null(newdata[[event_var]]))
     stop("Column '", event_var, "' not found in newdata.")
 
-  # Apply a small numerical adjustment to Tstart and Thoriz to avoid precision issues.
-  Tstart <- Tstart + 1e-06
-  Thoriz <- Thoriz + 1e-06
-
-  # Filter dataset to retain only subjects at risk at Tstart.
-  # If a subject has multiple records, only the most recent record before Tstart is kept.
-  newdata <- create_cox_df(newdata, Tstart)
-
   if (type %in% c("auc", "roc")) {
     # Compute the linear predictor (risk score) from the fitted Cox model.
     lp <- predict(object, newdata = newdata, type = "lp")
@@ -515,9 +519,10 @@ tvEVAL <- function(
     auc <- survivalROC(
       Stime = newdata[[Time_var]],
       status = newdata[[event_var]],
+      entry = entry,
       marker = lp,
       predict.time = Thoriz,
-      span = 0.25 * nrow(newdata)^(-0.20)
+      span = 0.25 * length(unique(newdata$id))^(-0.20)
     )
 
     if (type == "auc") {
@@ -803,37 +808,20 @@ bootstrap_iteration <- function(iteration, test_df, models, full = FALSE) {
     Dt = 60,
     type_weights = "IPCW"
   )
-  if (full) {
-    auc_joint_full_36 <- tvAUC(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 36,
-      type_weights = "IPCW"
-    )
-    auc_joint_full_60 <- tvAUC(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 60,
-      type_weights = "IPCW"
-    )
-  } else {
-    auc_cox_36 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 36,
-      type = "auc"
-    )
-    auc_cox_60 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 60,
-      type = "auc"
-    )
-  }
+  auc_cox_36 <- tvEVAL(
+    object = models$cox_model,
+    newdata = boot_data,
+    Tstart = 0,
+    Dt = 36,
+    type = "auc"
+  )
+  auc_cox_60 <- tvEVAL(
+    object = models$cox_model,
+    newdata = boot_data,
+    Tstart = 0,
+    Dt = 60,
+    type = "auc"
+  )
   auc_joint_1_36 <- tvAUC(
     object = models$joint_model,
     newdata = boot_data,
@@ -848,37 +836,27 @@ bootstrap_iteration <- function(iteration, test_df, models, full = FALSE) {
     Dt = 48,
     type_weights = "IPCW"
   )
-  if (full) {
-    auc_joint_full_1_36 <- tvAUC(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 24,
-      type_weights = "IPCW"
-    )
-    auc_joint_full_1_60 <- tvAUC(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 48,
-      type_weights = "IPCW"
-    )
-  } else {
-    auc_cox_1_36 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 24,
-      type = "auc"
-    )
-    auc_cox_1_60 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 48,
-      type = "auc"
-    )
-  }
+  auc_cox_1_36 <- tvEVAL(
+    object = models$cox_model_tv,
+    newdata = boot_data,
+    Tstart = 12,
+    Dt = 24,
+    type = "auc",
+    Time_var = "tstop",
+    entry_var = "tstart",
+    event_var = "endpt"
+  )
+  auc_cox_1_60 <- tvEVAL(
+    object = models$cox_model_tv,
+    newdata = boot_data,
+    Tstart = 12,
+    Dt = 48,
+    type = "auc",
+    Time_var = "tstop",
+    entry_var = "tstart",
+    event_var = "endpt"
+  )
+
   # -------------------------------#
   # Compute Dynamic Brier Measures
   # -------------------------------#
@@ -900,38 +878,20 @@ bootstrap_iteration <- function(iteration, test_df, models, full = FALSE) {
     Dt = 60,
     type_weights = "IPCW"
   )
-  if (full) {
-    brier_joint_full_36 <- tvBrier(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 36,
-      type_weights = "IPCW"
-    )
-    brier_joint_full_60 <- tvBrier(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 60,
-      type_weights = "IPCW"
-    )
-  } else {
-    brier_cox_36 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 36,
-      type = "brier"
-    )
-    brier_cox_60 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 0,
-      Dt = 60,
-      type = "brier"
-    )
-  }
-
+  brier_cox_36 <- tvEVAL(
+    object = models$cox_model,
+    newdata = boot_data,
+    Tstart = 0,
+    Dt = 36,
+    type = "brier"
+  )
+  brier_cox_60 <- tvEVAL(
+    object = models$cox_model,
+    newdata = boot_data,
+    Tstart = 0,
+    Dt = 60,
+    type = "brier"
+  )
   brier_joint_1_36 <- tvBrier(
     object = models$joint_model,
     newdata = boot_data,
@@ -946,80 +906,48 @@ bootstrap_iteration <- function(iteration, test_df, models, full = FALSE) {
     Dt = 48,
     type_weights = "IPCW"
   )
-  if (full) {
-    brier_joint_full_1_36 <- tvBrier(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 24,
-      type_weights = "IPCW"
-    )
-    brier_joint_full_1_60 <- tvBrier(
-      object = models$joint_model_full,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 48,
-      type_weights = "IPCW"
-    )
-  } else {
-    brier_cox_1_36 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 24,
-      type = "brier"
-    )
-    brier_cox_1_60 <- tvEVAL(
-      object = models$cox_model,
-      newdata = boot_data,
-      Tstart = 12,
-      Dt = 48,
-      type = "brier"
-    )
-  }
+  brier_cox_1_36 <- tvEVAL(
+    object = models$cox_model_tv,
+    newdata = boot_data,
+    Tstart = 12,
+    Dt = 24,
+    type = "brier",
+    Time_var = "tstop",
+    entry_var = "tstart",
+    event_var = "endpt"
+  )
+  brier_cox_1_60 <- tvEVAL(
+    object = models$cox_model_tv,
+    newdata = boot_data,
+    Tstart = 12,
+    Dt = 48,
+    type = "brier",
+    Time_var = "tstop",
+    entry_var = "tstart",
+    event_var = "endpt"
+  )
   # -------------------------------#
   # Return AUC and Brier Results as a Tibble
   # -------------------------------#
   # Combines all computed performance metrics into a tibble for further statistical analysis.
-  if (full) {
-    tibble(
-      auc_joint_36 = auc_joint_36$auc,
-      auc_joint_full_36 = auc_joint_full_36$auc,
-      auc_joint_60 = auc_joint_60$auc,
-      auc_joint_full_60 = auc_joint_full_60$auc,
-      auc_joint_1_36 = auc_joint_1_36$auc,
-      auc_joint_full_1_36 = auc_joint_full_1_36$auc,
-      auc_joint_1_60 = auc_joint_1_60$auc,
-      auc_joint_full_1_60 = auc_joint_full_1_60$auc,
-      brier_joint_36 = brier_joint_36$Brier,
-      brier_joint_full_36 = brier_joint_full_36$Brier,
-      brier_joint_60 = brier_joint_60$Brier,
-      brier_joint_full_60 = brier_joint_full_60$Brier,
-      brier_joint_1_36 = brier_joint_1_36$Brier,
-      brier_joint_full_1_36 = brier_joint_full_1_36$Brier,
-      brier_joint_1_60 = brier_joint_1_60$Brier,
-      brier_joint_full_1_60 = brier_joint_full_1_60$Brier
-    )
-  } else {
-    tibble(
-      auc_joint_36 = auc_joint_36$auc,
-      auc_cox_36 = auc_cox_36$auc,
-      auc_joint_60 = auc_joint_60$auc,
-      auc_cox_60 = auc_cox_60$auc,
-      auc_joint_1_36 = auc_joint_1_36$auc,
-      auc_cox_1_36 = auc_cox_1_36$auc,
-      auc_joint_1_60 = auc_joint_1_60$auc,
-      auc_cox_1_60 = auc_cox_1_60$auc,
-      brier_joint_36 = brier_joint_36$Brier,
-      brier_cox_36 = brier_cox_36$brier,
-      brier_joint_60 = brier_joint_60$Brier,
-      brier_cox_60 = brier_cox_60$brier,
-      brier_joint_1_36 = brier_joint_1_36$Brier,
-      brier_cox_1_36 = brier_cox_1_36$brier,
-      brier_joint_1_60 = brier_joint_1_60$Brier,
-      brier_cox_1_60 = brier_cox_1_60$brier
-    )
-  }
+  tibble(
+    auc_joint_36 = auc_joint_36$auc,
+    auc_cox_36 = auc_cox_36$auc,
+    auc_joint_60 = auc_joint_60$auc,
+    auc_cox_60 = auc_cox_60$auc,
+    auc_joint_1_36 = auc_joint_1_36$auc,
+    auc_cox_1_36 = auc_cox_1_36$auc,
+    auc_joint_1_60 = auc_joint_1_60$auc,
+    auc_cox_1_60 = auc_cox_1_60$auc,
+    brier_joint_36 = brier_joint_36$Brier,
+    brier_cox_36 = brier_cox_36$brier,
+    brier_joint_60 = brier_joint_60$Brier,
+    brier_cox_60 = brier_cox_60$brier,
+    brier_joint_1_36 = brier_joint_1_36$Brier,
+    brier_cox_1_36 = brier_cox_1_36$brier,
+    brier_joint_1_60 = brier_joint_1_60$Brier,
+    brier_cox_1_60 = brier_cox_1_60$brier
+  )
 }
 
 # -----------------------------------------------------------------------------#
@@ -1686,7 +1614,8 @@ plot_dyn_pred <- function(
     ) +
     geom_line(
       data = long_data,
-      aes(x = times_long, y = preds_long, color = "6MWT distance"),
+      aes(x = times_long, y = preds_long),
+      color = col_line_long,
       linewidth = lwd_long
     ) +
     # Plot the observed longitudinal measurements
@@ -1711,25 +1640,19 @@ plot_dyn_pred <- function(
     ) +
     geom_line(
       data = event_data,
-      aes(x = times_event, y = preds_event, color = "Event probability"),
+      aes(x = times_event, y = preds_event),
+      color = col_line_event,
       linewidth = lwd_event
     ) +
     # Configure x-axis breaks
     scale_x_continuous(
       breaks = seq(0, max(event_data$times_event), by = x_months)
     ) +
-    scale_color_manual(
-      values = c(
-        "6MWT distance" = col_line_long,
-        "Event probability" = col_line_event
-      )
-    ) +
     coord_cartesian(ylim = y_lim) +
     # Add labels and title to the plot
     labs(
       x = "",
-      y = "",
-      color = ""
+      y = ""
     ) +
     theme_minimal(base_size = 14) +
     theme(

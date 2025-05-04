@@ -249,8 +249,8 @@ ggarrange(
 ggsave(
   file.path("export", "fig_1.jpeg"),
   last_plot(),
-  width = 30,
-  height = 20,
+  width = 20,
+  height = 12,
   dpi = 300,
   background = "white",
   units = "cm"

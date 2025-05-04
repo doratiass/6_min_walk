@@ -132,7 +132,7 @@ clean_df %>%
   add_n(statistic = "{N_miss} ({p_miss})") %>%
   add_difference(everything() ~ "smd") %>%
   modify_column_hide(conf.low) %>%
-  modify_header(estimate = "**SMD**", n = "**Missing**")
+  modify_header(estimate = "**SMD**", n = "**Missing**") -> tbl_1
 
 # Save the summary table as an HTML file
 gt::gtsave(as_gt(tbl_1), file = "export/tbl_1.html")

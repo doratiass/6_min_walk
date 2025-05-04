@@ -182,8 +182,8 @@ ggarrange(
 ggsave(
   file.path("export", "fig_2.jpeg"),
   last_plot(),
-  width = 30,
-  height = 15,
+  width = 20,
+  height = 10,
   dpi = 300,
   background = "white",
   units = "cm"
@@ -194,6 +194,7 @@ ggsave(
 # ============================================================================ #
 # Generate dynamic predictions for different patients at multiple time points.
 # Create plots for high 282 (more options 1003, 444, 172, 657, 654)
+leg_font_size <- 14
 pat_high <- ggarrange(
   plot_dyn_pred(
     jointFit,
@@ -204,7 +205,8 @@ pat_high <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = ""
   ) +
-    rremove("x.text"),
+    rremove("x.text") +
+    theme(legend.text = element_text(size = leg_font_size)),
   plot_dyn_pred(
     jointFit,
     long_df,
@@ -214,7 +216,8 @@ pat_high <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = ""
   ) +
-    rremove("x.text"),
+    rremove("x.text") +
+    theme(legend.text = element_text(size = leg_font_size)),
   plot_dyn_pred(
     jointFit,
     long_df,
@@ -224,9 +227,12 @@ pat_high <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = "",
     x_months = 12
-  ),
+  ) +
+    theme(legend.text = element_text(size = leg_font_size)),
   nrow = 3,
-  labels = "AUTO" #, align = "hv"
+  labels = "AUTO",
+  common.legend = TRUE,
+  legend = "top"
 )
 
 # Create plots for medium 51
@@ -240,7 +246,8 @@ pat_med <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = ""
   ) +
-    rremove("x.text"),
+    rremove("x.text") +
+    theme(legend.text = element_text(size = leg_font_size)),
   plot_dyn_pred(
     jointFit,
     long_df,
@@ -250,7 +257,8 @@ pat_med <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = ""
   ) +
-    rremove("x.text"),
+    rremove("x.text") +
+    theme(legend.text = element_text(size = leg_font_size)),
   plot_dyn_pred(
     jointFit,
     long_df,
@@ -260,8 +268,11 @@ pat_med <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = "",
     x_months = 12
-  ),
-  nrow = 3 #, align = "hv"
+  ) +
+    theme(legend.text = element_text(size = leg_font_size)),
+  nrow = 3,
+  common.legend = TRUE,
+  legend = "top"
 )
 # Create plots for low 686 (more options  210 778)
 pat_low <- ggarrange(
@@ -274,7 +285,8 @@ pat_low <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = ""
   ) +
-    rremove("x.text"),
+    rremove("x.text") +
+    theme(legend.text = element_text(size = leg_font_size)),
   plot_dyn_pred(
     jointFit,
     long_df,
@@ -284,7 +296,8 @@ pat_low <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = ""
   ) +
-    rremove("x.text"),
+    rremove("x.text") +
+    theme(legend.text = element_text(size = leg_font_size)),
   plot_dyn_pred(
     jointFit,
     long_df,
@@ -294,8 +307,11 @@ pat_low <- ggarrange(
     add_sec_y = TRUE,
     sec_y_lab = "",
     x_months = 12
-  ),
-  nrow = 3 #, align = "hv"
+  ) +
+    theme(legend.text = element_text(size = leg_font_size)),
+  nrow = 3,
+  common.legend = TRUE,
+  legend = "top"
 )
 
 # -------------------------------------------------------------------------- #
@@ -308,9 +324,11 @@ final_plot <- ggarrange(
   ncol = 3,
   label.y = 1,
   label.x = 0.4,
-  vjust = 1.5,
+  vjust = 3.2,
   labels = c("High", "Medium", "Low"),
-  heights = 2
+  heights = 2,
+  common.legend = TRUE,
+  legend = "top"
 )
 
 # Annotate figure with a main title
@@ -326,7 +344,7 @@ annotate_figure(
 ggsave(
   file.path("export", "fig_3.jpeg"),
   last_plot(),
-  width = 35,
+  width = 30,
   height = 20,
   dpi = 300,
   background = "white",
