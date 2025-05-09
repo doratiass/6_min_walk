@@ -75,11 +75,11 @@ quan <- new_df %>%
     sds = change / sd, # Standardize the change
     quartile = factor(
       case_when(
-        sds < 0 ~ "Low", # Lower quartile threshold
-        sds > 1 ~ "High", # Upper quartile threshold
-        TRUE ~ "Medium" # Middle quartile
+        sds < 0 ~ "Low-performance", # Lower quartile threshold
+        sds > 1 ~ "High-performance", # Upper quartile threshold
+        TRUE ~ "Medium-performance" # Middle quartile
       ),
-      levels = c("Low", "Medium", "High")
+      levels = c("Low-performance", "Medium-performance", "High-performance")
     )
   ) %>%
   ungroup()
@@ -110,7 +110,7 @@ new_df %>%
   theme_minimal() +
   labs(
     title = "", #Predicted 6-Minute Walk Distance Over Time
-    x = "Time (months)",
+    x = "Follow-up time (months)",
     y = "6-Minute Walk Distance (meters)",
     color = "Group"
   ) +
@@ -155,8 +155,8 @@ ggsurvplot(
   risk.table = TRUE, # Add risk table below the plot
   risk.table.col = "strata", # Color the risk table by group
   legend.title = "",
-  legend.labs = c("Low", "Medium", "High"),
-  xlab = "Time (months)",
+  legend.labs = c("Low-performance", "Medium-performance", "High-performance"),
+  xlab = "Follow-up time (months)",
   ylab = "Survival Probability",
   palette = "Set1", # Use a clean color palette
   ggtheme = theme_minimal()
@@ -188,6 +188,19 @@ ggsave(
   background = "white",
   units = "cm"
 )
+
+# --------------------------------------------------------------------------- #
+## Graphical Abstract ---------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# Create a graphical abstract with the Kaplan-Meier plot and predicted 6MWT plot
+
+km_plot$plot +
+  theme(
+    legend.position = c(.05, .05),
+    legend.justification = c("left", "bottom"),
+    legend.box.just = "right",
+    legend.margin = margin(6, 6, 6, 6)
+  )
 
 # ============================================================================ #
 # Dynamic Predictions for Selected Patients -----------------------------------

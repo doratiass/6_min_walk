@@ -106,8 +106,6 @@ cox_df_3 <- cox_df %>%
 clean_df %>%
   filter(id %in% long_df$id) %>%
   mutate(group = ifelse(id %in% long_df_3$id, "Cohort 1+3", "Cohort 1")) %>%
-  filter(time == 0) %>%
-  distinct(id, group, .keep_all = TRUE) %>%
   group_by(id, group) %>%
   # Compute the number of 6MWT tests per subject and the overall change from first to last measurement
   mutate(
@@ -116,6 +114,7 @@ clean_df %>%
       x6mw_dist_meter[which.min(time)],
   ) %>%
   ungroup() %>%
+  filter(time == 0) %>%
   # Remove identifiers and time variable from the summary table
   select(-c(id, time, x6mw_change)) %>%
   # Rename variables using the custom label_get function for presentation

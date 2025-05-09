@@ -280,6 +280,7 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
       ),
       levels = c("A", "B", "C", "D")
     ),
+    # hf_category = factor(categorize_hf(diag)),
     # Convert edema_detail to a factor (further decisions needed on categorization)
     edema_detail = factor(edema_detail),
     # Flag for pillows-related dyspnea based on keywords in the free-text 'pillows_reason'
@@ -412,7 +413,7 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
       ignore.case = TRUE
     ),
     # Create a combined variable for ACE inhibitors and ARBs
-    ace_arb = ace_inhibitor | arbs,
+    ace_arb_arni = ace_inhibitor | arbs | arni,
     # Count the number of medications by splitting the 'medications' string on '^'
     med_num = sapply(strsplit(medications, "\\^"), length),
     # Flag if the 6MWT date matches the clinical date
@@ -588,6 +589,7 @@ clean_df_identified <- raw_df %>%
   # Select the final set of variables for analysis
   select(
     id,
+    first_visit,
     mortality_status,
     fup_time,
     time,
@@ -601,6 +603,11 @@ clean_df_identified <- raw_df %>%
   ) %>%
   ungroup()
 
+clean_df_identified %>%
+  filter(time == 0) %>%
+  select(id, first_visit) %>%
+  write_csv("data/CHF_first_visit.csv")
+
 # -------------------------------------------------------------------------- #
 ## Anonymize the Data and Create a De-Identified Dataset ####
 # -------------------------------------------------------------------------- #
@@ -612,7 +619,7 @@ id_map <- data.frame(Original_ID = unique_ids, Anonymized_ID = anon_ids)
 # Replace original IDs with anonymized IDs
 clean_df <- id_map %>%
   right_join(clean_df_identified, by = c("Original_ID" = "id")) %>%
-  select(-Original_ID) %>%
+  select(-Original_ID, -first_visit) %>%
   rename(id = Anonymized_ID)
 
 # Save the mapping table
