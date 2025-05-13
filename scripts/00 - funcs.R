@@ -53,59 +53,12 @@ merge_rows <- function(x) {
   }
 }
 
-#' Categorize HF Type from Diagnosis Strings
-#' This function assigns HF category based on free-text diagnosis fields.
-#' Categories include: HFrEF, HFmrEF, HFpEF, or Unknown.
-categorize_hf <- function(diagnosis_vector) {
-  sapply(
-    diagnosis_vector,
-    function(diagnoses) {
-      if (is.na(diagnoses) || stringr::str_trim(diagnoses) == "")
-        return("Unknown")
-
-      diag_lower <- tolower(diagnoses)
-
-      if (
-        stringr::str_detect(
-          diag_lower,
-          "reduced ejection fraction|hfrEF|lvef *< *40|ef *< *40|severely impaired lv|lv dysfunction severe|dilated cardiomyopathy"
-        )
-      ) {
-        return("HFrEF")
-      } else if (
-        stringr::str_detect(
-          diag_lower,
-          "mildly reduced ejection fraction|hfmrEF|lvef *40 *- *49|ef *40 *- *49|mildly impaired lv"
-        )
-      ) {
-        return("HFmrEF")
-      } else if (
-        stringr::str_detect(
-          diag_lower,
-          "preserved ejection fraction|hfpEF|lvef *> *50|ef *> *50|lvef *= *55|normal lv function|preserved systolic function"
-        )
-      ) {
-        return("HFpEF")
-      } else if (
-        stringr::str_detect(
-          diag_lower,
-          "congestive heart failure\\(chf\\)|heart failure"
-        )
-      ) {
-        return("HFrEF") # conservatively default to HFrEF
-      } else {
-        return("Unknown")
-      }
-    },
-    USE.NAMES = FALSE
-  )
-}
 # Variables to be included in the Seattle model (or other specific analyses)
 seattle_vars <- c(
   "age",
   "gender",
   "ischemic_etiology",
-  # "hf_category",
+  "ef",
   "sbp",
   "nyha",
   "fusid",
@@ -155,6 +108,7 @@ vars_dict <- tibble(
   "mortality_status" = "Mortality status",
   "fup_time" = "Follow-up time (months)",
   "nyha" = "NYHA class",
+  "ef" = "Ejection fraction",
   "ischemic_etiology" = "Ischemic etiology",
   "sbp" = "Systolic blood pressure",
   "fusid" = "Furosemide treatment",

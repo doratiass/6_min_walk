@@ -280,7 +280,6 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
       ),
       levels = c("A", "B", "C", "D")
     ),
-    # hf_category = factor(categorize_hf(diag)),
     # Convert edema_detail to a factor (further decisions needed on categorization)
     edema_detail = factor(edema_detail),
     # Flag for pillows-related dyspnea based on keywords in the free-text 'pillows_reason'
@@ -543,12 +542,42 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
     year(x6mw_date) >= 2014
   )
 
+# -------------------------------------------------------------------------- #
+## Clinical Data ####
+# -------------------------------------------------------------------------- #
+ef_df <- read_excel("data/CHF_EF.xlsx") %>%
+  janitor::clean_names() %>%
+  filter(
+    (days_echo_clinic <= 365) & (days_echo_clinic >= -31)
+  ) %>%
+  transmute(
+    id = id_enc,
+    ef = factor(
+      case_when(
+        ef == "<30%" ~ "HFrEF",
+        ef == "30-34%" ~ "HFrEF",
+        ef == "35-39%" ~ "HFrEF",
+        ef == "40-44%" ~ "HFmrEF",
+        ef == "45-49%" ~ "HFmrEF",
+        ef == "50-54%" ~ "HFpEF",
+        ef == "55-70%" ~ "HFpEF"
+      ),
+      levels = c(
+        "HFrEF",
+        "HFmrEF",
+        "HFpEF"
+      )
+    )
+  )
+
 # ============================================================================ #
 # Create the Final Cleaned Dataset --------------------------------------------
 # ============================================================================ #
 clean_df_identified <- raw_df %>%
   # Merge the clinical data with mortality data by subject ID
   left_join(mortality, by = "id") %>%
+  # Merge with EF data
+  left_join(ef_df, by = "id") %>%
   arrange(id, x6mw_date) %>%
   group_by(id) %>%
   mutate(
