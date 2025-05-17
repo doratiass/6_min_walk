@@ -543,7 +543,7 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
   )
 
 # -------------------------------------------------------------------------- #
-## Clinical Data ####
+## Ejection fraction ####
 # -------------------------------------------------------------------------- #
 ef_df <- read_excel("data/CHF_EF.xlsx") %>%
   janitor::clean_names() %>%
@@ -552,6 +552,19 @@ ef_df <- read_excel("data/CHF_EF.xlsx") %>%
   ) %>%
   transmute(
     id = id_enc,
+    ef_raw = factor(
+      ef,
+      ordered = TRUE,
+      levels = c(
+        "<30%",
+        "30-34%",
+        "35-39%",
+        "40-44%",
+        "45-49%",
+        "50-54%",
+        "55-70%"
+      )
+    ),
     ef = factor(
       case_when(
         ef == "<30%" ~ "HFrEF",
@@ -623,6 +636,7 @@ clean_df_identified <- raw_df %>%
     fup_time,
     time,
     x6mw_dist_meter,
+    ef_raw,
     all_of(seattle_vars)
   ) %>%
   group_by(id, mortality_status, fup_time, time) %>%

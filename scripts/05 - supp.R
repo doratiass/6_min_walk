@@ -62,7 +62,7 @@ long_df_full <- clean_df %>%
     k_spare = first(k_spare),
     allopurinol = first(allopurinol),
     statin = first(statin),
-    ace_arb = first(ace_arb),
+    ace_arb_arni = first(ace_arb_arni),
     beta_blocker = first(beta_blocker),
   ) %>%
   # Group by key variables and summarize the 6MWT distance (averaging if needed)
@@ -216,6 +216,7 @@ doc <- read_docx() %>%
 
 # Save the document
 print(doc, target = "export/supp_tbl_full.docx")
+
 # ============================================================================ #
 # Joint Model small vs full: Discrimination and Calibration Analysis -----------
 # ============================================================================ #
@@ -238,16 +239,19 @@ B <- 200 # Number of bootstrap iterations
 options(future.globals.maxSize = 891289600)
 
 # Enable parallel processing for faster computation.
-plan(multisession, workers = parallel::detectCores() - 1)
+n_cores <- parallel::detectCores() - 1
+cl <- parallel::makeCluster(n_cores)
+plan(cluster, workers = cl)
 
 # Perform bootstrap resampling in parallel for each dataset.
-bootEVAL_results_full_1 <- future_map(
-  1:B,
+bootEVAL_results_full_1 <- future_map_dfr(
+  seq_len(B),
   ~ bootstrap_iteration(.x, eval_df_full_1$test, models_full_1, full = TRUE),
   .options = furrr_options(seed = TRUE)
 )
-bootEVAL_results_full_3 <- future_map(
-  1:B,
+
+bootEVAL_results_full_3 <- future_map_dfr(
+  seq_len(B),
   ~ bootstrap_iteration(.x, eval_df_full_3$test, models_full_3, full = TRUE),
   .options = furrr_options(seed = TRUE)
 )
@@ -374,4 +378,138 @@ save(
   bootEVAL_results_full_1,
   bootEVAL_results_full_3,
   file = "data/supp_data.RData"
+)
+
+# ============================================================================ #
+# EF and 6MWT correlation analysis --------------------------------------------
+# ============================================================================ #
+# -------------------------------------------------------------------------- #
+## Correlation Analysis of EF and 6MWT ####
+# -------------------------------------------------------------------------- #
+# Create a dataset for the correlation analysis.
+cor_df <- clean_df %>%
+  group_by(id) %>%
+  slice(1) %>% # Select the first visit for each patient
+  ungroup() %>%
+  filter(!is.na(ef_raw)) %>%
+  filter(!is.na(x6mw_dist_meter)) %>%
+  mutate(
+    ef_numeric = as.numeric(ef_raw),
+    x6mw_dist_meter = as.numeric(x6mw_dist_meter)
+  ) %>%
+  distinct(id, ef, ef_numeric, ef_raw, x6mw_dist_meter) %>%
+  arrange(id)
+
+# Asses correlation between EF and 6MWT distance using spearman method.
+
+# Spearman correlation
+spearman_res <- cor.test(
+  cor_df$ef_numeric,
+  cor_df$x6mw_dist_meter,
+  method = "spearman"
+)
+
+kruskal_result <- rstatix::kruskal_test(cor_df, x6mw_dist_meter ~ ef)
+print(kruskal_result)
+
+# Create label
+rho_label <- paste0(
+  "Spearman's rho = ",
+  round(spearman_res$estimate, 2),
+  "\n(p = ",
+  format.pval(spearman_res$p.value, digits = 3),
+  ")"
+)
+
+# Plot
+ggplot(cor_df, aes(x = ef_raw, y = x6mw_dist_meter)) +
+  geom_boxplot(outlier.shape = NA, fill = "skyblue", alpha = 0.6) +
+  geom_jitter(width = 0.2, alpha = 0.4, size = 1) +
+  annotate(
+    "text",
+    x = 4,
+    y = max(cor_df$x6mw_dist_meter) * 1.05,
+    label = rho_label,
+    hjust = 0,
+    size = 4
+  ) +
+  labs(
+    x = "Ejection Fraction Category",
+    y = "6-Minute Walk Distance (meters)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(10, 10, 10, 10)
+  )
+
+ggsave(
+  file.path("export", "supp_fig_2.jpeg"),
+  last_plot(),
+  width = 30,
+  height = 20,
+  dpi = 300,
+  background = "white",
+  units = "cm"
+)
+
+# -------------------------------------------------------------------------- #
+## EF and mortality analysis --------------------------------------------------
+# -------------------------------------------------------------------------- #
+# Create a dataset for the EF and mortality analysis.
+ef_mortality_df <- clean_df %>%
+  group_by(id) %>%
+  slice(1) %>% # Select the first visit for each patient
+  ungroup() %>%
+  filter(!is.na(ef_raw)) %>%
+  filter(!is.na(mortality_status)) %>%
+  mutate(
+    ef_numeric = as.numeric(ef_raw),
+    mortality_status = as.numeric(mortality_status)
+  ) %>%
+  distinct(id, ef, ef_numeric, ef_raw, fup_time, mortality_status) %>%
+  arrange(id)
+
+# Create KM survival curves for each EF category.
+km_fit <- survfit(Surv(fup_time, mortality_status) ~ ef, data = ef_mortality_df)
+# Plot the survival curves.
+ggsurvplot(
+  km_fit,
+  data = ef_mortality_df,
+  risk.table = TRUE,
+  pval = TRUE,
+  conf.int = TRUE,
+  xlab = "Time (months)",
+  ylab = "Survival Probability",
+  #title = "Kaplan-Meier Survival Curves by EF Category",
+  ggtheme = theme_minimal(base_size = 12),
+  risk.table.y.text.col = TRUE,
+  risk.table.y.text = FALSE,
+  risk.table.height = 0.2,
+  palette = "Set1",
+  legend.title = "EF Category",
+  legend.labs = levels(ef_mortality_df$ef),
+  surv.scale = "percent",
+  legend = "bottom",
+  ggtheme_custom = theme(
+    plot.title = element_text(hjust = 0, face = "bold", size = 14),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(10, 10, 10, 10)
+  )
+) -> km_plot
+
+# Save the plot
+ggsave(
+  file.path("export", "supp_fig_3.jpeg"),
+  km_plot$plot,
+  width = 30,
+  height = 20,
+  dpi = 300,
+  background = "white",
+  units = "cm"
 )

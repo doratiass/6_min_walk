@@ -54,16 +54,18 @@ models_3 <- fit_models(eval_df_3)
 B <- 200 # Number of bootstrap iterations
 
 # Enable parallel processing for faster computation.
-plan(multisession, workers = parallel::detectCores() - 1)
+n_cores <- parallel::detectCores() - 1
+cl <- parallel::makeCluster(n_cores)
+plan(cluster, workers = cl)
 
 # Perform bootstrap resampling in parallel for each dataset.
-bootEVAL_results_1 <- future_map(
-  1:B,
+bootEVAL_results_1 <- future_map_dfr(
+  seq_len(B),
   ~ bootstrap_iteration(.x, eval_df_1$test, models_1),
   .options = furrr_options(seed = TRUE)
 )
-bootEVAL_results_3 <- future_map(
-  1:B,
+bootEVAL_results_3 <- future_map_dfr(
+  seq_len(B),
   ~ bootstrap_iteration(.x, eval_df_3$test, models_3),
   .options = furrr_options(seed = TRUE)
 )

@@ -28,6 +28,7 @@ library(survival) # For survival analysis
 library(JMbayes2) # For joint modeling and tvAUC computations
 library(pmcalibration) # For calibration plots
 library(survivalROC) # For time-dependent ROC curves
+library(compiler) # For compiling R functions for performance
 # ============================================================================ #
 # Definitions  ----------------------------------------------------------------
 # ============================================================================ #
@@ -83,6 +84,7 @@ small_seattle_vars <- c(
   "ischemic_etiology",
   "sbp",
   "nyha",
+  "ef",
   "fusid",
   "k_spare",
   "allopurinol",
@@ -218,6 +220,25 @@ jointfit_tbl <- function(
         variable == "nyhaUndetermined" ~ "NYHA Undetermined",
         variable == "value(x6mw_dist_meter)" ~ "6MWT Distance (m)",
         variable == "slope(x6mw_dist_meter)" ~ "6MWT Distance Slope",
+        variable == "ischemic_etiologyTRUE" ~ "Ischemic Etiology",
+        variable == "sbp" ~ "Systolic Blood Pressure (mmHg)",
+        variable == "efHFmrEF" ~ "HFmrEF (ref: HFrEF)",
+        variable == "efHFpEF" ~ "HFpEF (ref: HFrEF)",
+        variable == "fusidTRUE" ~ "Furosemide Treatment",
+        variable == "k_spareTRUE" ~
+          "Mineralocorticoid Receptor Antagonist Treatment",
+        variable == "allopurinolTRUE" ~ "Allopurinol Treatment",
+        variable == "statinTRUE" ~ "Statin Treatment",
+        variable == "ace_arb_arniTRUE" ~ "ACEi, ARB or ARNI Treatment",
+        variable == "beta_blockerTRUE" ~ "Beta Blockers Treatment",
+        variable == "sglt2TRUE" ~
+          "Sodium-Glucose Cotransporter-2 Inhibitors Treatment",
+        variable == "na" ~ "Sodium (mmol/L)",
+        variable == "hgb" ~ "Hemoglobin (g/dL)",
+        variable == "bmi" ~ "BMI (kg/m²)",
+        variable == "smokepast smoker" ~ "Past Smoker",
+        variable == "smoke1-10" ~ "1-10 Cigarettes/Day",
+        variable == "smoke>10" ~ ">10 Cigarettes/Day",
         TRUE ~ variable
       )
     )
@@ -331,21 +352,10 @@ fit_models <- function(data_list, full = FALSE) {
   # 4. Fit a Cox model that also includes the 6-min walk distance for comparison.
   if (full) {
     CoxFit_train_full <- coxph(
-      Surv(fup_time, mortality_status) ~
-        gender +
-          age +
-          nyha +
-          sbp +
-          bmi +
-          na +
-          hgb +
-          ischemic_etiology +
-          fusid +
-          k_spare +
-          allopurinol +
-          statin +
-          ace_arb +
-          beta_blocker,
+      as.formula(paste(
+        "Surv(fup_time, mortality_status) ~",
+        paste(small_seattle_vars, collapse = " + ")
+      )),
       data = cox_df_train,
       model = TRUE,
       x = TRUE,
@@ -763,7 +773,12 @@ print.tvBrier_coxph <- function(x, digits = 4, ...) {
 #
 # -----------------------------------------------------------------------------#
 
-bootstrap_iteration <- function(iteration, test_df, models, full = FALSE) {
+bootstrap_iteration <- cmpfun(function(
+  iteration,
+  test_df,
+  models,
+  full = FALSE
+) {
   library(JMbayes2)
   library(survivalROC)
   library(riskRegression)
@@ -1020,7 +1035,7 @@ bootstrap_iteration <- function(iteration, test_df, models, full = FALSE) {
       brier_cox_1_60 = brier_cox_1_60$brier
     )
   }
-}
+})
 
 # -----------------------------------------------------------------------------#
 # Plot Bootstrap Estimates for AUC and Brier Score

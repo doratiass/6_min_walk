@@ -158,8 +158,9 @@ ggsurvplot(
   legend.labs = c("Low-performance", "Medium-performance", "High-performance"),
   xlab = "Follow-up time (months)",
   ylab = "Survival Probability",
+  surv.scale = "percent",
   palette = "Set1", # Use a clean color palette
-  ggtheme = theme_minimal()
+  ggtheme = theme_minimal(base_size = 12)
 ) -> km_plot
 
 # -------------------------------------------------------------------------- #
