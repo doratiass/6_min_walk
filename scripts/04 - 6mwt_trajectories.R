@@ -181,7 +181,7 @@ ggarrange(
 )
 
 ggsave(
-  file.path("export", "fig_2.jpeg"),
+  file.path("export", "fig_2.tiff"),
   last_plot(),
   width = 20,
   height = 10,
@@ -356,7 +356,7 @@ annotate_figure(
 )
 
 ggsave(
-  file.path("export", "fig_3.jpeg"),
+  file.path("export", "fig_3.tiff"),
   last_plot(),
   width = 30,
   height = 20,

@@ -148,7 +148,7 @@ plot_boot_df(
 auc_plot
 # Save the AUC plot.
 ggsave(
-  file.path("export", "boot_auc_graph.jpeg"),
+  file.path("export", "boot_auc_graph.tiff"),
   last_plot(),
   width = 30,
   height = 20,
@@ -168,7 +168,7 @@ plot_boot_df(
 
 # Save the AUC plot.
 ggsave(
-  file.path("export", "boot_auc_diff_graph.jpeg"),
+  file.path("export", "boot_auc_diff_graph.tiff"),
   last_plot(),
   width = 30,
   height = 20,
@@ -191,7 +191,7 @@ plot_boot_df(
 brier_plot
 # Save the Brier score plot.
 ggsave(
-  file.path("export", "boot_brier_graph.jpeg"),
+  file.path("export", "boot_brier_graph.tiff"),
   last_plot(),
   width = 30,
   height = 20,
@@ -211,7 +211,7 @@ plot_boot_df(
 
 # Save the Brier score diff plot.
 ggsave(
-  file.path("export", "boot_brier_diff_graph.jpeg"),
+  file.path("export", "boot_brier_diff_graph.tiff"),
   last_plot(),
   width = 30,
   height = 20,
@@ -249,7 +249,7 @@ ggarrange(
 )
 
 ggsave(
-  file.path("export", "fig_1.jpeg"),
+  file.path("export", "fig_1.tiff"),
   last_plot(),
   width = 20,
   height = 12,
