@@ -99,13 +99,14 @@ cox_df_3 <- cox_df %>%
 # -------------------------------------------------------------------------- #
 ## Generate Baseline Summary Table (Table 1) ####
 # -------------------------------------------------------------------------- #
-# bind_rows(
-#   clean_df %>% filter(id %in% long_df$id) %>% mutate(group = "Cohort 1"),
-#   clean_df %>% filter(id %in% long_df_3$id) %>% mutate(group = "Cohort 3")
-# ) %>%
-clean_df %>%
-  filter(id %in% long_df$id) %>%
-  mutate(group = ifelse(id %in% long_df_3$id, "Cohort 1+3", "Cohort 1")) %>%
+bind_rows(
+  clean_df %>%
+    filter(id %in% long_df$id) %>%
+    mutate(group = "Cohort 1"),
+  clean_df %>%
+    filter(id %in% long_df_3$id) %>%
+    mutate(group = "Cohort 3")
+) %>%
   group_by(id, group) %>%
   # Compute the number of 6MWT tests per subject and the overall change from first to last measurement
   mutate(
@@ -127,7 +128,6 @@ clean_df %>%
     value = list(label_get("gender") ~ "Male"),
     missing = "no"
   ) %>%
-  add_overall() %>%
   add_n(statistic = "{N_miss} ({p_miss})") %>%
   add_difference(everything() ~ "smd") %>%
   modify_column_hide(conf.low) %>%

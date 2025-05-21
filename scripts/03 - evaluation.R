@@ -107,8 +107,8 @@ boot_eval_summary <- bind_rows(
   ungroup() %>%
   mutate(
     model_type = case_when(
-      str_detect(res, "joint") ~ "Joint Model",
-      str_detect(res, "cox") ~ "Cox Model",
+      str_detect(res, "joint") ~ "Serial 6MWT",
+      str_detect(res, "cox") ~ "Single 6MWT",
       str_detect(res, "diff") ~ "Difference"
     ),
     fup_start = ifelse(
@@ -225,7 +225,7 @@ ggsave(
 # -------------------------------------------------------------------------- #
 ggarrange(
   auc_plot +
-    ggtitle("AUC") +
+    ggtitle("AUC ↑") +
     theme(
       plot.title = element_text(hjust = 0.5),
       axis.title.y = element_blank(),
@@ -235,7 +235,7 @@ ggarrange(
     ) + #,
     rremove("xlab"),
   brier_plot +
-    ggtitle("Brier Score") +
+    ggtitle("Brier Score ↓") +
     theme(
       plot.title = element_text(hjust = 0.5),
       axis.title.y = element_blank(),

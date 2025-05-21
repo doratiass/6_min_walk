@@ -1111,7 +1111,7 @@ bootstrap_iteration <- cmpfun(function(
 
 plot_boot_df <- function(
   data,
-  model_filter = c("Cox Model", "Joint Model"),
+  model_filter = c("Single 6MWT", "Serial 6MWT"),
   metric_filter = c("AUC", "Brier Score"),
   x_var = "fup_time",
   y_var = "mean",
