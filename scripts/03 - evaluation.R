@@ -249,11 +249,12 @@ ggarrange(
 )
 
 ggsave(
-  file.path("export", "fig_1.tiff"),
+  file.path("export", "fig_1.pdf"),
   last_plot(),
   width = 20,
   height = 12,
   dpi = 300,
-  background = "white",
+  device = cairo_pdf,
+  bg = "white",
   units = "cm"
 )

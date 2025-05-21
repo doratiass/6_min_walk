@@ -181,12 +181,13 @@ ggarrange(
 )
 
 ggsave(
-  file.path("export", "fig_2.tiff"),
+  file.path("export", "fig_2.pdf"),
   last_plot(),
   width = 20,
   height = 10,
   dpi = 300,
-  background = "white",
+  device = cairo_pdf,
+  bg = "white",
   units = "cm"
 )
 
@@ -356,11 +357,12 @@ annotate_figure(
 )
 
 ggsave(
-  file.path("export", "fig_3.tiff"),
+  file.path("export", "fig_3.pdf"),
   last_plot(),
   width = 30,
   height = 20,
   dpi = 300,
-  background = "white",
+  device = cairo_pdf,
+  bg = "white",
   units = "cm"
 )
