@@ -157,7 +157,7 @@ jointfit_tbl <- function(
   jointFit3,
   round_digits_hr = 2,
   round_digits_p = 3,
-  heads = c("Cohort 1", "Cohort 3")
+  heads = c("Full cohort", "Repeated-testing cohort")
 ) {
   # Extract survival summary objects
   surv1 <- summary(jointFit1)$Survival
@@ -466,26 +466,34 @@ tvEVAL <- function(
   ...
 ) {
   # Ensure the provided model is a Cox proportional hazards model.
-  if (!inherits(object, "coxph"))
+  if (!inherits(object, "coxph")) {
     stop("This function can only be used with 'coxph' objects.\n")
+  }
 
   # Validate that 'newdata' is a non-empty data frame.
-  if (!is.data.frame(newdata) || nrow(newdata) == 0)
+  if (!is.data.frame(newdata) || nrow(newdata) == 0) {
     stop("'newdata' must be a non-empty data frame.\n")
+  }
 
   # Ensure at least one of 'Thoriz' (prediction horizon) or 'Dt' (time interval) is provided.
-  if (is.null(Thoriz) && is.null(Dt))
+  if (is.null(Thoriz) && is.null(Dt)) {
     stop("Either 'Thoriz' or 'Dt' must be specified.\n")
+  }
 
   # If 'Thoriz' is provided, ensure it is greater than 'Tstart'.
-  if (!is.null(Thoriz) && Thoriz <= Tstart)
+  if (!is.null(Thoriz) && Thoriz <= Tstart) {
     stop("'Thoriz' must be larger than 'Tstart'.\n")
+  }
 
   # Compute 'Thoriz' if it is not explicitly provided.
-  if (is.null(Thoriz)) Thoriz <- Tstart + Dt
+  if (is.null(Thoriz)) {
+    Thoriz <- Tstart + Dt
+  }
 
   # Compute 'Dt' if it is not explicitly provided.
-  if (is.null(Dt)) Dt <- Thoriz - Tstart
+  if (is.null(Dt)) {
+    Dt <- Thoriz - Tstart
+  }
 
   # Apply a small numerical adjustment to Tstart and Thoriz to avoid precision issues.
   Tstart <- Tstart + 1e-06
@@ -502,14 +510,18 @@ tvEVAL <- function(
   }
 
   # Verify that 'newdata' contains the required columns.
-  if (is.null(newdata[[id_var]]))
+  if (is.null(newdata[[id_var]])) {
     stop("Column '", id_var, "' not found in newdata.")
-  if (is.null(newdata[[time_var]]))
+  }
+  if (is.null(newdata[[time_var]])) {
     stop("Column '", time_var, "' not found in newdata.")
-  if (is.null(newdata[[Time_var]]))
+  }
+  if (is.null(newdata[[Time_var]])) {
     stop("Column '", Time_var, "' not found in newdata.")
-  if (is.null(newdata[[event_var]]))
+  }
+  if (is.null(newdata[[event_var]])) {
     stop("Column '", event_var, "' not found in newdata.")
+  }
 
   if (type %in% c("auc", "roc")) {
     # Compute the linear predictor (risk score) from the fitted Cox model.
@@ -622,13 +634,16 @@ tvEVAL <- function(
 # Print method for "tvAUC_coxph" objects (Time-Dependent AUC)
 print.tvAUC_coxph <- function(x, digits = 4, ...) {
   # Ensure correct object class
-  if (!inherits(x, "tvAUC_coxph"))
+  if (!inherits(x, "tvAUC_coxph")) {
     stop("Use only with 'tvAUC_coxph' objects.\n")
+  }
 
   # Print model type (Cox or Joint Model)
-  if (x$class == "jm")
-    cat("\n\tTime-dependent AUC for the Joint Model:", x$nameObject) else
+  if (x$class == "jm") {
+    cat("\n\tTime-dependent AUC for the Joint Model:", x$nameObject)
+  } else {
     cat("\n\tTime-dependent AUC for the Cox Model:", x$nameObject)
+  }
 
   # Print estimated AUC
   cat("\n\nEstimated AUC: ", round(x$auc, digits))
@@ -659,16 +674,19 @@ print.tvAUC_coxph <- function(x, digits = 4, ...) {
 # Print method for "tvROC_coxph" objects (Time-Dependent ROC Metrics)
 print.tvROC_coxph <- function(x, digits = 4, ...) {
   # Ensure correct object class
-  if (!inherits(x, "tvROC_coxph"))
+  if (!inherits(x, "tvROC_coxph")) {
     stop("Use only with 'tvROC_coxph' objects.\n")
+  }
 
   # Print model type (Cox or Joint Model)
-  if (x$class == "jm")
+  if (x$class == "jm") {
     cat(
       "\n\tTime-dependent ROC Metrics for the Joint Model:",
       x$nameObject
-    ) else
+    )
+  } else {
     cat("\n\tTime-dependent ROC Metrics for the Cox Model:", x$nameObject)
+  }
 
   # Print estimated AUC
   cat("\n\nEstimated AUC: ", round(x$auc, digits))
@@ -699,16 +717,19 @@ print.tvROC_coxph <- function(x, digits = 4, ...) {
 # Print method for "tvBrier_coxph" objects (Time-Dependent Brier Score)
 print.tvBrier_coxph <- function(x, digits = 4, ...) {
   # Ensure correct object class
-  if (!inherits(x, "tvBrier_coxph"))
+  if (!inherits(x, "tvBrier_coxph")) {
     stop("Use only with 'tvBrier_coxph' objects.\n")
+  }
 
   # Print model type (Cox or Joint Model)
-  if (x$class == "jm")
+  if (x$class == "jm") {
     cat(
       "\n\tTime-dependent Brier Score for the Joint Model:",
       x$nameObject
-    ) else
+    )
+  } else {
     cat("\n\tTime-dependent Brier Score for the Cox Model:", x$nameObject)
+  }
 
   # Print estimated Brier score
   cat("\n\nEstimated Brier Score: ", round(x$brier, digits))

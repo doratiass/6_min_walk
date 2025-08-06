@@ -150,11 +150,12 @@ raw_df <- read_excel("data/CHF_final_wide.xlsx") %>%
       "lipid",
       "drugs"
     ),
-    function(x)
+    function(x) {
       case_when(
         x == "כן" ~ TRUE,
         x == "לא" ~ FALSE
       )
+    }
   ) %>%
   # Clean and validate numerical variables by setting implausible values to NA
   mutate(

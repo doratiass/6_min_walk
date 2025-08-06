@@ -268,8 +268,8 @@ plan(sequential)
 # -------------------------------------------------------------------------- #
 # Compute mean, standard deviation, median, and 95% confidence intervals for AUC and Brier scores.
 boot_eval_full_summary <- bind_rows(
-  boot_eval_full_df_1 %>% mutate(cohort = "Cohort 1"),
-  boot_eval_full_df_3 %>% mutate(cohort = "Cohort 3")
+  boot_eval_full_df_1 %>% mutate(cohort = "Full cohort"),
+  boot_eval_full_df_3 %>% mutate(cohort = "Repeated-testing cohort")
 ) %>%
   mutate(
     auc_diff_36 = auc_joint_36 - auc_joint_full_36,
