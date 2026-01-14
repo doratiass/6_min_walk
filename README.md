@@ -1,6 +1,7 @@
 # Impact of Repeated 6-Minute Walk Test Measurements on Mortality Prediction
 
-**Status:** *Work in Progress*
+**Status:** *Published*  
+**Publication:** https://doi.org/10.1016/j.amjmed.2025.11.024
 
 ## Overview
 
@@ -60,7 +61,30 @@ The project relies on the following R packages:
 
 Install the required packages using:
 
-\`\`\`r install.packages(c("tidyverse", "readxl", "zoo", "survival", "future", "furrr", "ggpubr", "gridExtra", "flextable", "gtsummary")) \# Note: JMbayes2 and MuMIn may require installation from CRAN or GitHub.
+```r
+install.packages(
+  c(
+    "tidyverse",
+    "readxl",
+    "zoo",
+    "survival",
+    "future",
+    "furrr",
+    "ggpubr",
+    "gridExtra",
+    "flextable",
+    "gtsummary"
+  )
+)
+```
+
+> Note: JMbayes2 and MuMIn may require installation from CRAN or GitHub.
+
+## Publication
+
+This work has been published in *The American Journal of Medicine* and is available at:
+
+- https://doi.org/10.1016/j.amjmed.2025.11.024
 
 **Dynamic Predictions**
 
@@ -74,7 +98,7 @@ Dynamic prediction plots are generated using a custom function (plot_dyn_pred())
 
 -   **Enhanced Reporting:** Develop interactive dashboards or Shiny apps for real-time dynamic predictions.
 
--   **Manuscript Preparation:** Prepare documentation and manuscripts for potential publication.
+-   **Reproducibility Enhancements:** Add additional documentation or workflow automation to improve reuse in secure environments.
 
 ------------------------------------------------------------------------
 
